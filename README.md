@@ -1,7 +1,7 @@
 # wraptool-cpp2nim
 Macros allowing generating compact and readable wrappers to C++ classes fior Nim programming language
 
-Work in progress. Still not ready for use.
+Work in progress.
 
 Macros allow you create C++ code wrapper in style:
 ```Nimrod
