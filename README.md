@@ -1,5 +1,5 @@
 # wraptool-cpp2nim
-Macros allowing generating compact and readable wrappers to C++ classes fior Nim programming language
+Macros allowing generating compact and readable wrappers to C++ classes for Nim programming language
 
 Work in progress.
 
