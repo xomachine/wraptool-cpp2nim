@@ -1,15 +1,19 @@
 import macros
 
-## Macro allowing define namespace and header classes imported which from
-## Syntax:
-## namespace(header, namespace)
-##   header    - string containing header filename (same syntax with #include in C++)
-##   namespace - string containing namespace name
-## Usage:
-## namespace("<someheader.hpp>", "somenamespace"):
-##   ...Classes annotations...
-## Header parameter is optional
+
 macro namespace*(header: expr, ns: expr, body: expr):expr =
+  ## Macro allowing define namespace and header classes imported which from
+  ## Syntax:
+  ## namespace(header, namespace)
+  ##   header    - string containing header filename (same syntax with #include in C++)
+  ##   namespace - string containing namespace name
+  ## Usage:
+  ##
+  ## .. code-block:: nim
+  ##   namespace("<someheader.hpp>", "somenamespace"):
+  ##   ...Classes annotations...
+  ##
+  ## Header parameter is optional
   result = newStmtList()
   for decl in body.children:
     case decl.kind
@@ -37,35 +41,38 @@ template namespace*(ns: expr, body: expr):expr =
   namespace("", ns, body)
 
 from strutils import `%`
-## Macro allowing define class should be imported from cpp header
-## Syntax:
-## annotate_class(header, namespace, nim_class_name, cpp_class_name)
-##   header    -      string containing header filename (same syntax with #include in C++)
-##   namespace -      string containing namespace name
-##   nim_class_name - class name which be used to call class from Nim code
-##   Note: nim_class_name can be defined as generic Class[T]. In this case cpp class will be considered as template
-##   cpp_class_name - string containing name of class in C++ header file or library
-## Usage:
-## annotate_class("<library.hpp>", "libspace", LibClass, "LibClass"): # import libspace::LibClass and its methods
-##   proc libmethod(): cint      # method of class
-##   proc LibClass(somevar:cint) # overloaded constructor (default constructor generated automaticaly)
-##   ...
-## var lc = newLibClass(4) # constructors are generated with names compilled from "new" word and class name in Nim
-## echo($lc.libmethod())
-##   ...
-## namespace("somespace"): # annotate_class can be combined with namespace statement
-##   annotate_class(SomeTemplate[T], "SomeTemplate_"): # namespace and header fields can be ommited
-##   # if header field is set - header from namespace will be overwritten for this class
-##     proc SomeTemplate(x: T, y: int) # You may use template identifier in constructors
-##     proc some_method(): T           # as well as in methods in this block without repeated declaration
-##    ...
-##  var sc = newSomeTemplate[string]("str", 5) # costructors are formed as generics
-##  assert(type(sc.some_method()) is string)   # either methods
-##
-## Header and namespace parameters is optional
-## annotate_class generates new type and default constructor for this type
+
 macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: expr, body: expr): expr =
-  result = newStmtList()
+  ## Macro allowing define class should be imported from cpp header
+  ## Syntax:
+  ## annotate_class(header, namespace, nim_class_name, cpp_class_name)
+  ##   header    -      string containing header filename (same syntax with #include in C++)
+  ##   namespace -      string containing namespace name
+  ##   nim_class_name - class name which be used to call class from Nim code
+  ##   Note: nim_class_name can be defined as generic Class[T]. In this case cpp class will be considered as template
+  ##   cpp_class_name - string containing name of class in C++ header file or library
+  ## Usage:
+  ##
+  ## .. code-block:: nim
+  ##   annotate_class("<library.hpp>", "libspace", LibClass, "LibClass"): # import libspace::LibClass and its methods
+  ##     proc libmethod(): cint      # method of class
+  ##     proc LibClass(somevar:cint) # overloaded constructor (default constructor generated automaticaly)
+  ##     ...
+  ##   var lc = newLibClass(4) # constructors are generated with names compilled from "new" word and class name in Nim
+  ##   echo($lc.libmethod())
+  ##     ...
+  ##   namespace("somespace"): # annotate_class can be combined with namespace statement
+  ##     annotate_class(SomeTemplate[T], "SomeTemplate_"): # namespace and header fields can be ommited
+  ##     # if header field is set - header from namespace will be overwritten for this class
+  ##       proc SomeTemplate(x: T, y: int) # You may use template identifier in constructors
+  ##       proc some_method(): T           # as well as in methods in this block without repeated declaration
+  ##      ...
+  ##    var sc = newSomeTemplate[string]("str", 5) # costructors are formed as generics
+  ##    assert(type(sc.some_method()) is string)   # either methods
+  ##
+  ## Header and namespace parameters is optional
+  ## annotate_class generates new type and default constructor for this type
+  result = newNimNode(nnkStmtList)
   let cppclass:string = $cppname
   let ns: string = $ns_prefix
   var nimclass: string
@@ -80,6 +87,7 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
   var t_brackets: string
   var cpp_class_brackets: string = ""
   var cpp_proc_brackets: string = ""
+  var cpp_method_brackets: string = ""
   case classname.kind
   of nnkIdent:
     # standart class
@@ -89,6 +97,7 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
     nimclass = $classname[0]
     cpp_class_brackets = "<'0>"
     cpp_proc_brackets = "<'*0>"
+    cpp_method_brackets = "<'*1>"
     template_brackets = newSeq[string]()
     for i in 1..classname.len-1:
       template_brackets.add($classname[i])
@@ -121,7 +130,7 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
                               parseExpr(nimclass & t_brackets))
 
   let method_pragma_string = "{." & header & "importcpp:\"#." &
-                             ns & cppclass & cpp_proc_brackets & "::$1" & "(@)\".}"
+                             ns & cppclass & cpp_method_brackets & "::$1" & "(@)\".}"
   let body_list =
     if not (body.kind == nnkStmtList):
       newStmtList(body)
@@ -144,7 +153,6 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
           constructor[3].add(args[i])
         if not (gens.kind == nnkEmpty):
           gens.copyChildrenTo(constructor[2])
-        echo constructor.treeRepr()
         result.add(constructor)
         continue
       s[3].insert(1, self_arg)
@@ -157,11 +165,10 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
         if template_brackets.len < 3:
           for i in template_brackets.len..<3:
             generic_expr.add(newEmptyNode())
-        #echo generic_expr.treeRepr()
         s[2].add(generic_expr)
       let method_pragma = parseExpr(method_pragma_string % fname)
       s[4] = method_pragma
-      result.add(s)
+      result.add(s.copy())
     else:
       error("NIY")
 
@@ -170,4 +177,3 @@ template annotate_class*(head:expr ,classname: expr, cppname: expr, body: expr):
 
 template annotate_class*(classname: expr, cppname: expr, body: expr): expr =
   annotate_class("", "", classname, cppname, body)
-
