@@ -124,7 +124,7 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
   let basic_constructor = "proc new" & nimclass & "*" & t_brackets &
                           "(): " & nimclass & t_brackets &
                           " {." & header & "importcpp:\"" & ns &
-                          cppclass & cpp_proc_brackets & "(@)\".}"
+                          cppclass & cpp_proc_brackets & "(@)\", constructor.}"
   result.add(parseExpr(basic_constructor))
   let self_arg = newIdentDefs(ident("self"),
                               parseExpr(nimclass & t_brackets))
