@@ -185,8 +185,10 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
       let method_pragma = parseExpr(method_pragma_string % fname)
       s[4] = method_pragma
       result.add(s.copy())
+    of nnkDiscardStmt:
+      discard
     else:
-      error("NIY")
+      error("NIY:\n\r" & s.treeRepr())
 
 template annotate_class*(head:expr ,classname: expr, cppname: expr, body: expr): expr =
   annotate_class(head, "", classname, cppname, body)
