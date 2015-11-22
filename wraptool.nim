@@ -86,8 +86,8 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
       "header: " & $header & ","
     else:
       "header: \"" & $header & "\","
-  var template_brackets: seq[string]
-  var t_brackets: string
+  var template_brackets: seq[string] = newSeq[string]()
+  var t_brackets: string = ""
   var cpp_class_brackets: string = ""
   var cpp_proc_brackets: string = ""
   var cpp_method_brackets: string = ""
@@ -103,7 +103,6 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
     cpp_proc_brackets = "<'*0>"
     cpp_method_brackets = "<'*1>"
     cpp_destructor_brackets = "<'**1>"
-    template_brackets = newSeq[string]()
     for i in 1..classname.len-1:
       template_brackets.add($classname[i])
     t_brackets = ($template_brackets)
