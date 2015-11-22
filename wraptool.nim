@@ -1,4 +1,40 @@
 import macros
+from strutils import `%`
+
+proc search_in_brackets(template_symbol: string, args: NimNode): string {.compiletime.} =
+  assert(args.kind == nnkBracketExpr, "Second argument must be of type nnkFormalParams!")
+  result = ""
+  for ch in args.children():
+    case ch.kind
+    of nnkIdent:
+      if $ch == template_symbol:
+        result = "*"
+        return
+    of nnkBracketExpr:
+      let body = template_symbol.search_in_brackets(ch)
+      if body.len > 0:
+        result = "*" & body
+    else:
+      echo "Unexpected node:"
+      echo ch.treeRepr()
+
+proc generate_cpp_brackets(template_symbol: string, args: NimNode): string {.compiletime.} =
+  assert(args.kind == nnkFormalParams, "Second argument must be of type nnkFormalParams!")
+  var i = 0
+  for ch in args.children():
+    case ch.kind
+    of nnkIdent:
+      if $ch == template_symbol:
+        result = "<'" & $i & ">"
+        return
+    of nnkBracketExpr:
+      let body = template_symbol.search_in_brackets(ch)
+      if body.len > 0:
+        result = "<'" & body & $i & ">"
+    else:
+      echo "Unexpected node:"
+      echo ch.treeRepr()
+    i+=1
 
 
 macro namespace*(header: expr, ns: expr, body: expr):expr =
@@ -11,10 +47,20 @@ macro namespace*(header: expr, ns: expr, body: expr):expr =
   ##
   ## .. code-block:: nim
   ##   namespace("<someheader.hpp>", "somenamespace"):
-  ##   ...Classes annotations...
+  ##   ...Classes and procedures annotations...
   ##
   ## Header parameter is optional
   result = newStmtList()
+  let ns_string = $ns & "::"
+  let header_string =
+    if $header == "":
+      "nodecl,"
+    elif header.kind == nnkIdent:
+      "header: " & $header & ","
+    else:
+      "header: \"" & $header & "\","
+  let proc_pragma_string = "{." & header_string & "importcpp:\"" &
+                           ns_string & "::$1$2" & "(@)\".}"
   for decl in body.children:
     case decl.kind
     of nnkCall:
@@ -30,17 +76,30 @@ macro namespace*(header: expr, ns: expr, body: expr):expr =
           warning("Old one: " & $header.toStrLit() & header.lineinfo())
       # If notation not full exists
       if decl.len < 6:
-        decl.insert(decl.len-3, newStrLitNode($ns & "::"))
+        decl.insert(decl.len-3, newStrLitNode(ns_string))
       else:
         error("Classes with already defined namespace cannot be in namespace block: " & $decl & decl.lineinfo())
-      result.add(decl)
+      result.add(decl.copy())
+    of nnkProcDef:
+      # proc name [T](args) {.pragma.}
+      #       0    2   3        4
+      if (decl[0].kind == nnkIdent):
+        let name:string = $decl[0]
+        decl[0] = ident(name).postfix("*")
+      let procname = $(decl[0].basename)
+      var template_brackets = ""
+      if not (decl[2].kind == nnkEmpty):
+        if not (decl[2][1].kind == nnkEmpty):
+          error("Multiparametric templates not supported yet")
+        template_brackets = ($decl[2][0]).generate_cpp_brackets(decl[3])
+      let proc_pragma = parseExpr(proc_pragma_string % [procname, template_brackets])
+      decl[4] = proc_pragma
+      result.add(decl.copy())
     else:
       error("Invalid statement in namespace block: " & $decl)
 
 template namespace*(ns: expr, body: expr):expr =
   namespace("", ns, body)
-
-from strutils import `%`
 
 macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: expr, body: expr): expr =
   ## Macro allowing define class should be imported from cpp header
@@ -89,9 +148,9 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
   var template_brackets: seq[string] = newSeq[string]()
   var t_brackets: string = ""
   var cpp_class_brackets: string = ""
-  var cpp_proc_brackets: string = ""
-  var cpp_method_brackets: string = ""
-  var cpp_destructor_brackets: string = ""
+  var cpp_constructor_brackets: string = ""
+  var cpp_method_brackets: string  = ""
+  var cpp_destructor_brackets: string =""
   case classname.kind
   of nnkIdent:
     # standart class
@@ -100,9 +159,9 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
     # class template
     nimclass = $classname[0]
     cpp_class_brackets = "<'0>"
-    cpp_proc_brackets = "<'*0>"
-    cpp_method_brackets = "<'*1>"
-    cpp_destructor_brackets = "<'**1>"
+    cpp_constructor_brackets = "<'*0>"
+    cpp_method_brackets  = "<'*1>"
+    cpp_destructor_brackets ="<'**1>"
     for i in 1..classname.len-1:
       template_brackets.add($classname[i])
     t_brackets = ($template_brackets)
@@ -128,7 +187,7 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
   let basic_constructor = "proc new" & nimclass & "*" & t_brackets &
                           "(): " & nimclass & t_brackets &
                           " {." & header & "importcpp:\"" & ns &
-                          cppclass & cpp_proc_brackets & "(@)\", constructor.}"
+                          cppclass & cpp_constructor_brackets & "(@)\", constructor.}"
   result.add(parseExpr(basic_constructor))
 #  Experimental pragma required (should be implemented when it will become stable)
 #  let basic_destructor = "proc `=destroy`*" & t_brackets &
@@ -145,8 +204,8 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
   let self_arg = newIdentDefs(ident("self"),
                               parseExpr(nimclass & t_brackets))
 
-  let method_pragma_string = "{." & header & "importcpp:\"#." &
-                             ns & cppclass & cpp_method_brackets & "::$1" & "(@)\".}"
+  let method_pragma_string = "{." & header & "importcpp:\"#." & ns &
+                             cppclass & cpp_method_brackets & "::$1$2(@)\".}"
   let body_list =
     if not (body.kind == nnkStmtList):
       newStmtList(body)
@@ -172,9 +231,15 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
         result.add(constructor)
         continue
       s[3].insert(1, self_arg)
+      var cpp_brackets: string = ""
       if template_brackets.len > 0:
         if s[2].kind == nnkEmpty:
           s[2] = newNimNode(nnkGenericParams)
+        else:
+          if s[2][0].kind == nnkIdent:
+            if $s[2][0] in template_brackets:
+              error("Suplied template name $1 already used: $2 $3" % [$s[2][0], $s, s.lineinfo()])
+            cpp_brackets = ($s[2][0]).generate_cpp_brackets(s[3])
         var generic_expr = newNimNode(nnkIdentDefs)
         for t in template_brackets:
           generic_expr.add(ident(t))
@@ -182,7 +247,7 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
           for i in template_brackets.len..<3:
             generic_expr.add(newEmptyNode())
         s[2].add(generic_expr)
-      let method_pragma = parseExpr(method_pragma_string % fname)
+      let method_pragma = parseExpr(method_pragma_string % [fname, cpp_brackets])
       s[4] = method_pragma
       result.add(s.copy())
     of nnkDiscardStmt:
