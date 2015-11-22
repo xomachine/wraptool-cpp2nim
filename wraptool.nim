@@ -60,7 +60,7 @@ macro namespace*(header: expr, ns: expr, body: expr):expr =
     else:
       "header: \"" & $header & "\","
   let proc_pragma_string = "{." & header_string & "importcpp:\"" &
-                           ns_string & "::$1$2" & "(@)\".}"
+                           ns_string & "$1$2" & "(@)\".}"
   for decl in body.children:
     case decl.kind
     of nnkCall:
