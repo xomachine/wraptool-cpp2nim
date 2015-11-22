@@ -60,6 +60,9 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
   ##     ...
   ##   var lc = newLibClass(4) # constructors are generated with names compilled from "new" word and class name in Nim
   ##   echo($lc.libmethod())
+  ##   lc.destroyLibClass()    # destructors are generated with names compiled from "destroy" word and class name in Nim
+  ##   # Destructors usage is unnesessary according to Nim manual
+  ##   # http://nim-lang.org/docs/manual.html#importcpp-pragma-wrapping-destructors
   ##     ...
   ##   namespace("somespace"): # annotate_class can be combined with namespace statement
   ##     annotate_class(SomeTemplate[T], "SomeTemplate_"): # namespace and header fields can be ommited
@@ -71,7 +74,7 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
   ##    assert(type(sc.some_method()) is string)   # either methods
   ##
   ## Header and namespace parameters is optional
-  ## annotate_class generates new type and default constructor for this type
+  ## annotate_class generates new type, default constructor and destructor for this type
   result = newNimNode(nnkStmtList)
   let cppclass:string = $cppname
   let ns: string = $ns_prefix
@@ -88,6 +91,7 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
   var cpp_class_brackets: string = ""
   var cpp_proc_brackets: string = ""
   var cpp_method_brackets: string = ""
+  var cpp_destructor_brackets: string = ""
   case classname.kind
   of nnkIdent:
     # standart class
@@ -98,6 +102,7 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
     cpp_class_brackets = "<'0>"
     cpp_proc_brackets = "<'*0>"
     cpp_method_brackets = "<'*1>"
+    cpp_destructor_brackets = "<'**1>"
     template_brackets = newSeq[string]()
     for i in 1..classname.len-1:
       template_brackets.add($classname[i])
@@ -126,6 +131,18 @@ macro annotate_class*(header:expr , ns_prefix: expr, classname: expr, cppname: e
                           " {." & header & "importcpp:\"" & ns &
                           cppclass & cpp_proc_brackets & "(@)\", constructor.}"
   result.add(parseExpr(basic_constructor))
+#  Experimental pragma required (should be implemented when it will become stable)
+#  let basic_destructor = "proc `=destroy`*" & t_brackets &
+#                          "(self: var " & nimclass & t_brackets &
+#                          ") {." & header & "importcpp:\"#." & ns &
+#                          cppclass & cpp_destructor_brackets & "::~" &
+#                          cppclass & "()\".}"
+  let basic_destructor = "proc destroy" & nimclass & "*" & t_brackets &
+                          "(self: var " & nimclass & t_brackets &
+                          ") {." & header & "importcpp:\"#." & ns &
+                          cppclass & cpp_destructor_brackets & "::~" &
+                          cppclass & "()\".}"
+  result.add(parseExpr(basic_destructor))
   let self_arg = newIdentDefs(ident("self"),
                               parseExpr(nimclass & t_brackets))
 
