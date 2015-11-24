@@ -5,14 +5,15 @@ Work in progress.
 
 Macros allow you create C++ code wrapper in style:
 ```Nimrod
-namespace("<opencv2/core.hpp>", "cv"):
-  annotate_class(Size[T], "Size_"):
-    proc Size(w, h: T)
-    proc area*(): T
-    
-  annotate_class(Rect[T], "Rect_"):
-    proc Rect(x, y, w, h: T)
-    proc area*(): T
+wrapheader "<opencv2/core.hpp>":
+  namespace "cv":
+    class "Size_" as Size[T]:
+      proc Size(w, h: T)
+      proc area*(): T
+      
+    class Mat:
+      proc Mat(rows, cols, t: cint)
+      proc clone(): Mat
 ```
 for code like following:
 ```C++
@@ -25,12 +26,12 @@ namespace cv {
     _Tp area() const;
   }
   
-  template<typename _Tp> class Size_
+  class Mat
   {
   public:
-    Size_();
-    Size_(_Tp _width, _Tp _height);
-    _Tp area() const;
+    Mat();
+    Mat(int rows, int cols);
+    Mat clone();
 }
 ```
 
