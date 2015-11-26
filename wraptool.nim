@@ -257,15 +257,17 @@ macro wrapheader*(header: expr, imports: expr): expr =
   ##   # Destructors usage is unnesessary according to Nim manual
   ##   # http://nim-lang.org/docs/manual.html#importcpp-pragma-wrapping-destructors
   ##     ...
-  ##   wrapdynlib "libfoo.so": # libraries also can be "wrapped"
+  ##   wrapheader "<foo.h>":
+  ##     FOO_CONSTANT: cint # constants can be wrapped
   ##     class Bar[T]: # namespace can be ommited as well as C++ name
   ##                   # if in C++ class has the same name with Nims one
   ##                   # actually class can be a template
-  ##       proc Bar(x: T, y: int) # You may use template identifier in constructors
+  ##       proc Bar(x: T, y: cint) # You may use template identifier in constructors
   ##                              # from declaration of class
   ##       proc some_method(): T  # as well as in methods
   ##      ...
-  ##    var bar = newBar[string]("str", 5)        # costructors are formed as generics
+  ##    let fooconst = FOO_CONST                  # constants can be used in code as usually
+  ##    var bar = newBar[string]("str", fooconst) # costructors are formed as generics
   ##    assert(type(bar.some_method()) is string) # either methods
   ##
   ## class annotation without parameters generates new type, default constructor and destructor for this type
@@ -277,6 +279,22 @@ macro wrapheader*(header: expr, imports: expr): expr =
   wrap(header_string, dynlib = false, "", imports)
 
 macro wrapdynlib*(lib: expr, imports: expr): expr =
+  ## Wraps all supplied annotations as C++ stuff included from file
+  ##
+  ##
+  ## Usage:
+  ##
+  ## .. code-block:: nim
+  ##   wrapdynlib "libfoo.so": # libraries also can be "wrapped"
+  ##     # FOO_CONST: cint     # Constants cannot be wrapped from libraries
+  ##     class Bar[T]: # Other things are the same with wrapheader
+  ##       proc Bar(x: T, y: int)
+  ##       proc some_method(): T
+  ##      ...
+  ##    var bar = newBar[string]("str", 5)
+  ##    assert(type(bar.some_method()) is string)
+  ##
+  ## class annotation without parameters generates new type, default constructor and destructor for this type
   let lib_string =
     if lib.kind == nnkIdent:
       $lib
