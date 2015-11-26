@@ -67,14 +67,15 @@ proc annotate_class(header_pragma: string , ns_prefix: string, nimname: NimNode,
     result.add(pragma_no_unused_hint)
   else:
     error("Invalid class name: " & $nimname & nimname.lineinfo())
+  let var_pragma_string = "{.importcpp:\"$1\".}"
   # Creating type declaration
   # type nimclass* {.header: header, importcpp: ns::class.} = object.}
   let type_string = "type " & $nimclass & "* " & "{." & header_pragma &
                     ", importcpp: \"" & ns_prefix & cppname &
                     cpp_class_brackets & "\".} " & t_brackets & " = object"
-
-  let type_stmt = parseExpr(type_string)
+  var type_stmt = parseExpr(type_string)
   result.add(type_stmt)
+  let typedef_position = result.len - 1
   if template_brackets.len > 0:
     let pop_pragma = parseExpr("{.pop.}")
     result.add(pop_pragma)
@@ -147,6 +148,16 @@ proc annotate_class(header_pragma: string , ns_prefix: string, nimname: NimNode,
       result.add(s.copy())
     of nnkDiscardStmt:
       discard
+    of nnkCall:
+      if result[typedef_position][0][2][2].kind == nnkEmpty:
+        result[typedef_position][0][2][2] = newNimNode(nnkRecList)
+      var annotation = newNimNode(nnkIdentDefs)
+      annotation.add(newNimNode(nnkPragmaExpr))
+      annotation[0].add(s[0])
+      annotation[0].add(parseExpr(var_pragma_string % [$s[0]]))
+      annotation.add(s[1][0])
+      annotation.add(newNimNode(nnkEmpty))
+      result[typedef_position][0][2][2].add(annotation.copy())
     else:
       error("NIY:\n\r" & s.treeRepr())
 
