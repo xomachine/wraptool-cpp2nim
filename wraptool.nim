@@ -269,9 +269,9 @@ proc wrap(source: string, dynlib:bool, namespace: string = "",
       else:
         if not(expression[0].kind == nnkIdent) or
            not(expression[1].kind == nnkStmtList) or
-           (expression[1].len == 1):
-          error("Expression $1 not supported in wrapper. $2" %
-              [$expression, expression.lineinfo()])
+           not(expression[1].len == 1):
+          error("Expression\n $1\n not supported in wrapper. $2" %
+              [expression.treeRepr, expression.lineinfo()])
         cppvar = $expression[0]
         nimvar = expression[0]
         vartype = expression[1][0]
@@ -286,8 +286,8 @@ proc wrap(source: string, dynlib:bool, namespace: string = "",
       annotation[0].add(newNimNode(nnkEmpty))
       result.add(annotation.copy())
     else:
-      error("Expression $1 not supported in wrapper. $2" %
-            [$expression, expression.lineinfo()])
+      error("Expression not supported in wrapper.$1 \n $2" %
+            [expression.treeRepr(), expression.lineinfo()])
 
 
 macro wrapheader*(header: expr, imports: expr): expr =
