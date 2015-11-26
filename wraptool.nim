@@ -281,7 +281,7 @@ proc wrap(source: string, dynlib:bool, namespace: string = "",
       annotation[0][0].add(newNimNode(nnkPostfix))
       annotation[0][0][0].add(ident("*"))
       annotation[0][0][0].add(nimvar)
-      annotation[0][0].add(parseExpr(pragma_string % [cppvar]))
+      annotation[0][0].add(parseExpr(pragma_string % [ns_prefix & cppvar]))
       annotation[0].add(vartype)
       annotation[0].add(newNimNode(nnkEmpty))
       result.add(annotation.copy())
