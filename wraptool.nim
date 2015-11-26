@@ -165,8 +165,8 @@ proc wrap(source: string, dynlib:bool, namespace: string = "",
     else:
       namespace & "::"
   result = newNimNode(nnkStmtList)
-  let proc_pragma_string = "{."& head_pragma & ", importcpp: \"" &
-                           ns_prefix & "$1$2(@)\".}"
+  let pragma_string = "{."& head_pragma & ", importcpp: \"$1\".}"
+  let proc_pragma_string = pragma_string % [ns_prefix & "$1$2(@)"]
   for expression in expressions.children:
     case expression.kind
     of nnkCommand:
@@ -214,6 +214,20 @@ proc wrap(source: string, dynlib:bool, namespace: string = "",
       let proc_pragma = parseExpr(proc_pragma_string % [procname, template_brackets])
       expression[4] = proc_pragma
       result.add(expression.copy())
+    of nnkCall:
+      if not(expression[0].kind == nnkIdent) and
+         not(expression[1].kind == nnkStmtList) and
+         (expression[1].len == 1):
+        error("Expression $1 not supported in wrapper. $2" %
+            [$expression, expression.lineinfo()])
+      var annotation = newNimNode(nnkVarSection)
+      annotation.add(newNimNode(nnkIdentDefs))
+      annotation[0].add(newNimNode(nnkPragmaExpr))
+      annotation[0][0].add(expression[0])
+      annotation[0][0].add(parseExpr(pragma_string % [$expression[0]]))
+      annotation[0].add(expression[1][0])
+      annotation[0].add(newNimNode(nnkEmpty))
+      result.add(annotation.copy())
     else:
       error("Expression $1 not supported in wrapper. $2" %
             [$expression, expression.lineinfo()])
