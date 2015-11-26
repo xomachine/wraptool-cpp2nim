@@ -295,6 +295,7 @@ macro wrapheader*(header: expr, imports: expr): expr =
   ## .. code-block:: nim
   ##   wrapheader "<string>":
   ##     namespace "std":
+  ##       proc stoi(str: cstring, idx: ptr culong, base: cint) # import "stoi" function
   ##       class "string" as CppString: # import std::string as CppString type
   ##         proc c_str(): cstring      # import method of class
   ##         proc CppString(s:cstring)  # overloaded constructor
@@ -308,17 +309,20 @@ macro wrapheader*(header: expr, imports: expr): expr =
   ##   # http://nim-lang.org/docs/manual.html#importcpp-pragma-wrapping-destructors
   ##     ...
   ##   wrapheader "<foo.h>":
-  ##     FOO_CONSTANT: cint # constants can be wrapped
+  ##     FOO_CONSTANT: cint             # constants can be wrapped
+  ##     "__BarConst" as BAR_CONST:cint # and renamed if nessesary
   ##     class Bar[T]: # namespace can be ommited as well as C++ name
   ##                   # if in C++ class has the same name with Nims one
   ##                   # actually class can be a template
-  ##       proc Bar(x: T, y: cint) # You may use template identifier in constructors
-  ##                              # from declaration of class
-  ##       proc some_method(): T  # as well as in methods
+  ##       proc Bar(x: T, y: cint)      # You may use template identifier in constructors
+  ##                                    # from declaration of class
+  ##       proc some_method(): T        # as well as in methods
+  ##       foofield: cint               # class field annotations allowed
+  ##       "__bar_field" as barfield: T # field can be renamed and its type can be generic parameter
   ##      ...
-  ##    let fooconst = FOO_CONST                  # constants can be used in code as usually
-  ##    var bar = newBar[string]("str", fooconst) # costructors are formed as generics
-  ##    assert(type(bar.some_method()) is string) # either methods
+  ##    let fooconst = FOO_CONST                   # constants can be used in code as usually
+  ##    var bar = newBar[string]("str", BAR_CONST) # costructors are formed as generics
+  ##    assert(type(bar.some_method()) is string)  # either methods
   ##
   ## class annotation without parameters generates new type, default constructor and destructor for this type
   let header_string =
