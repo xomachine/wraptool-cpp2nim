@@ -148,18 +148,31 @@ proc annotate_class(header_pragma: string , ns_prefix: string, nimname: NimNode,
       result.add(s.copy())
     of nnkDiscardStmt:
       discard
-    of nnkCall:
+    of nnkCall, nnkInfix:
+      var cppvar: string
+      var nimvar: NimNode
+      var vartype: NimNode
+      if (s.kind == nnkInfix):
+        if not($s[0] == "as"):
+          error("Unknown infix notation\n" & s.treeRepr() & s.lineinfo())
+        cppvar = $s[1]
+        nimvar = s[2]
+        vartype = s[3][0]
+      else:
+        cppvar = $s[0]
+        nimvar = s[0]
+        vartype = s[1][0]
       if result[typedef_position][0][2][2].kind == nnkEmpty:
         result[typedef_position][0][2][2] = newNimNode(nnkRecList)
       var annotation = newNimNode(nnkIdentDefs)
       annotation.add(newNimNode(nnkPragmaExpr))
-      annotation[0].add(s[0])
-      annotation[0].add(parseExpr(var_pragma_string % [$s[0]]))
-      annotation.add(s[1][0])
+      annotation[0].add(nimvar)
+      annotation[0].add(parseExpr(var_pragma_string % [cppvar]))
+      annotation.add(vartype)
       annotation.add(newNimNode(nnkEmpty))
       result[typedef_position][0][2][2].add(annotation.copy())
     else:
-      error("NIY:\n\r" & s.treeRepr())
+      error("Unknown expression:\n$1\n $2" % [s.treeRepr(), s.lineinfo()])
 
 
 
