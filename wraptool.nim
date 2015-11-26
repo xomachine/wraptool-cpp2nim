@@ -153,12 +153,21 @@ proc annotate_class(header_pragma: string , ns_prefix: string, nimname: NimNode,
       var nimvar: NimNode
       var vartype: NimNode
       if (s.kind == nnkInfix):
-        if not($s[0] == "as"):
+        if not($s[0] == "as") or
+           not(s[1].kind == nnkStrLit) or
+           not(s[2].kind == nnkIdent) or
+           not(s[3].kind == nnkStmtList) or
+           not(s[3].len == 1):
           error("Unknown infix notation\n" & s.treeRepr() & s.lineinfo())
         cppvar = $s[1]
         nimvar = s[2]
         vartype = s[3][0]
       else:
+        if not(s[0].kind == nnkIdent) or
+           not(s[1].kind == nnkStmtList) or
+           not(s[1].len == 1):
+          error("Expression $1 not supported in wrapper. $2" %
+              [s.treeRepr(), s.lineinfo()])
         cppvar = $s[0]
         nimvar = s[0]
         vartype = s[1][0]
@@ -238,21 +247,38 @@ proc wrap(source: string, dynlib:bool, namespace: string = "",
       let proc_pragma = parseExpr(proc_pragma_string % [procname, template_brackets])
       expression[4] = proc_pragma
       result.add(expression.copy())
-    of nnkCall:
-      if not(expression[0].kind == nnkIdent) and
-         not(expression[1].kind == nnkStmtList) and
-         (expression[1].len == 1):
-        error("Expression $1 not supported in wrapper. $2" %
-            [$expression, expression.lineinfo()])
+    of nnkCall, nnkInfix:
       if dynlib:
         error("Constants and global variables cannot be imported from dynamic library: $1 $2" %
             [$expression, expression.lineinfo()])
+      var cppvar: string
+      var nimvar: NimNode
+      var vartype: NimNode
+      if (expression.kind == nnkInfix):
+        if not($expression[0] == "as") or
+           not(expression[1].kind == nnkStrLit) or
+           not(expression[2].kind == nnkIdent) or
+           not(expression[3].kind == nnkStmtList) or
+           not(expression[3].len == 1):
+          error("Unknown infix notation\n" & expression.treeRepr() & expression.lineinfo())
+        cppvar = $expression[1]
+        nimvar = expression[2]
+        vartype = expression[3][0]
+      else:
+        if not(expression[0].kind == nnkIdent) or
+           not(expression[1].kind == nnkStmtList) or
+           (expression[1].len == 1):
+          error("Expression $1 not supported in wrapper. $2" %
+              [$expression, expression.lineinfo()])
+        cppvar = $expression[0]
+        nimvar = expression[0]
+        vartype = expression[1][0]
       var annotation = newNimNode(nnkVarSection)
       annotation.add(newNimNode(nnkIdentDefs))
       annotation[0].add(newNimNode(nnkPragmaExpr))
-      annotation[0][0].add(expression[0])
-      annotation[0][0].add(parseExpr(pragma_string % [$expression[0]]))
-      annotation[0].add(expression[1][0])
+      annotation[0][0].add(nimvar)
+      annotation[0][0].add(parseExpr(pragma_string % [cppvar]))
+      annotation[0].add(vartype)
       annotation[0].add(newNimNode(nnkEmpty))
       result.add(annotation.copy())
     else:
