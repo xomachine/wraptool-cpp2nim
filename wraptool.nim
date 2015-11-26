@@ -220,6 +220,9 @@ proc wrap(source: string, dynlib:bool, namespace: string = "",
          (expression[1].len == 1):
         error("Expression $1 not supported in wrapper. $2" %
             [$expression, expression.lineinfo()])
+      if dynlib:
+        error("Constants and global variables cannot be imported from dynamic library: $1 $2" %
+            [$expression, expression.lineinfo()])
       var annotation = newNimNode(nnkVarSection)
       annotation.add(newNimNode(nnkIdentDefs))
       annotation[0].add(newNimNode(nnkPragmaExpr))
