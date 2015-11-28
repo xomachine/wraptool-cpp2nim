@@ -97,9 +97,10 @@ proc annotate_class(header_pragma: string , ns_prefix: string, nimname: NimNode,
                           ns_prefix & cppname & cpp_destructor_brackets &
                           "::~" & cppname & "()\".}"
   result.add(parseExpr(basic_destructor))
+#  var self_type = newNimNode(nnkVarTy)
+#  self_type.add(parseExpr(nimclass & t_brackets))
   let self_arg = newIdentDefs(ident("self"),
                               parseExpr(nimclass & t_brackets))
-
   let method_pragma_string = "{." & header_pragma & ", importcpp:\"#." & ns_prefix &
                              cppname & cpp_method_brackets & "::$1$2(@)\".}"
   let body_list =
@@ -112,10 +113,13 @@ proc annotate_class(header_pragma: string , ns_prefix: string, nimname: NimNode,
     of nnkProcDef:
       # proc name [T](args) {.pragma.}
       #       0    2   3        4
-      if (s[0].kind == nnkIdent):
-        let name:string = $s[0]
-        s[0] = ident(name).postfix("*")
-      let fname = $(s[0].basename)
+      if not(s[0].kind == nnkPostfix):
+        s[0] = s[0].postfix("*")
+      let fname =
+        if s[0].basename.kind == nnkIdent:
+          $(s[0].basename)
+        else:
+          ""
       if fname == nimclass: # if constructor declared
         var constructor = parseExpr(basic_constructor)
         let args = s[3]
@@ -143,6 +147,13 @@ proc annotate_class(header_pragma: string , ns_prefix: string, nimname: NimNode,
           for i in template_brackets.len..<3:
             generic_expr.add(newEmptyNode())
         s[2].add(generic_expr)
+      if (s[0][1].kind == nnkAccQuoted):
+        # operator
+        let op = ($s[0][1][0])
+        var cppnotation = "#" & op[0] & "@" & op[1..<op.len]
+        s[4] = parseExpr("{.nodecl, importcpp:\"$1\".}" % cppnotation)
+        result.add(s.copy())
+        continue
       let method_pragma = parseExpr(method_pragma_string % [fname, cpp_brackets])
       s[4] = method_pragma
       result.add(s.copy())
