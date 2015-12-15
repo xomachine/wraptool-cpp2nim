@@ -38,7 +38,7 @@ proc generate_cpp_brackets(template_symbol: string,
 
 
 proc annotate_class(header_pragma: string , ns_prefix: string, nimname: NimNode,
-                    cppname: string, body: expr): NimNode {.compiletime.} =
+                    cppname: string, body: NimNode): NimNode {.compiletime.} =
   result = newNimNode(nnkStmtList)
   var template_brackets: seq[string] = newSeq[string]()
   var t_brackets: string = ""
