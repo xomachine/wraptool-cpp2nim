@@ -3,26 +3,35 @@ import strutils
 
 # The name mangler for C++ Itanium mangler style
 
-const npatterns = ["std", "std::allocator", "std::basic_string",
-  "std::basic_stringIcSt11char_traitsIcESaIcEE", "std::basic_istreamIcSt11char_traitsIcEE",
+#macro dump(e: expr): expr =
+#  result = newEmptyNode()
+#  hint e.treeRepr()
+  
+#dump:
+  #std > "__cxx11" > basic_string[var cchar, var std>char_traits[var cchar], var std>allocator[var cchar]]
+#  (q:var sss[hhh])
+  #std>otherstd>anotherstd>andstdagain[hello,hi]
+  
+const npatterns = ["std",
+  parseExpr(""""std">allocator""").lispRepr(),
+  parseExpr(""""std">basic_string""").lispRepr(),
+  parseExpr("""std>basic_string[var cchar, var std>char_traits[var cchar], var std>allocator[var cchar]]""")
+    .lispRepr(),
+  "std::basic_istreamIcSt11char_traitsIcEE",
   "std::basic_ostreamIcSt11char_traitsIcEE", "std::basic_iostreamIcSt11char_traitsIcEE"]
 const default_subs = ["St", "Sa", "Sb", "Ss", "Si", "So", "Sd"]
+
+
 
 type
   MangleInfo* = object
     # The structure containing
     # namespace and substitutions information
     namespace: string
+    mangled_namespace: string
     known_nodes: seq[string]
 
 
-
-
-proc new*[T: MangleInfo](namespace: string = ""): T =
-  # Creates new MangleInfo with given namespace
-  MangleInfo(namespace: namespace,
-    known_nodes: newSeq[string](0))
-  
 
 proc number_to_substitution(number: int): string {.compileTime.} =
   assert(number >= 0, "Number must be positive or zero")
@@ -45,6 +54,7 @@ proc substitute(self: MangleInfo, input:string): string {.compileTime.} =
   return ""
 
 
+
 proc finalize(encoding: string): string {.compileTime.} = "_Z" & encoding
 
 proc mangle_ident(ident: string): string {.compileTime.} =
@@ -52,12 +62,51 @@ proc mangle_ident(ident: string): string {.compileTime.} =
     $ident.len() & ident
   else:
     ""
+proc new*[T: MangleInfo](namespace: string = ""): T {.compileTime.}=
+  # Creates new MangleInfo with given namespace
+  result = MangleInfo(namespace: namespace, mangled_namespace: "",
+    known_nodes: newSeq[string](0))
+  var sub_ns = substitute(result, namespace)
+  if sub_ns == "":
+    sub_ns = mangle_ident(namespace)
+  result.mangled_namespace = sub_ns
+  
+proc unwind_infixes(self: var MangleInfo,infixes: NimNode) {.compileTime.}=
+  expectKind(infixes, nnkInfix)
+  assert(infixes.len() == 3, "Strange infixes length!")
+  assert(infixes[2].kind in [nnkStrLit, nnkIdent], "Unknown node kind in infix: $1!" % infixes.treeRepr)
+  let already_done = self.substitute(infixes.lispRepr())
+  if already_done != "":
+    self.mangled_namespace = already_done
+    var tmp = new[MangleInfo]("")
+    tmp.unwind_infixes(infixes)
+    self.namespace = tmp.namespace
+    return
+  case infixes[1].kind:
+  of nnkIdent, nnkStrLit:
+    let ns = $infixes[1]
+    var mns = substitute(self, ns)
+    if mns == "":
+      self.known_nodes.add(ns)
+      mns = mangle_ident(ns)
+    self.namespace = ns
+    self.mangled_namespace = mns
+  of nnkInfix:
+    unwind_infixes(self, infixes[1])
+  else:
+    error("Unknown node kind: " & $infixes[1].kind)
+  self.mangled_namespace &= mangle_ident($infixes[2])
+  self.namespace &= "::" & $infixes[2]
+  self.known_nodes.add(infixes.lispRepr)
+    
 
-proc enclose(ns: string, t: string, name: string = ""): string {.compileTime.} =
-  var nested = false
+    
+proc enclose(ns: string, t: string, name: string = "", force: bool = false): string {.compileTime.} =
+  var nested = force
   result = ns & t & name
   if ns[0] in '0'..'9': nested = true
   if t[0] in '0'..'9' and (ns != "St" or name != ""): nested = true
+  if ns.len() > 2: nested = true
   if nested:
     result = "N" & result & "E"
 
@@ -151,17 +200,21 @@ proc mangle_typename(self: var MangleInfo, input:string, forced_name: string = "
     of "decltype(auto)": "Dc"
     of "void": "v" # Actually it never happens
     else:
-      let mi = self.substitute(self.namespace & "::" & input & forced_name)
-      if mi != "":
-        mi
-      else:
-        var mn = self.substitute(self.namespace)
-        if mn == "" and self.namespace != "":
-          mn = mangle_ident(self.namespace)
-          self.known_nodes.add(self.namespace)
-        let res = enclose(mn, mangle_ident($input), forced_name)
-        self.known_nodes.add(self.namespace & "::" & input & forced_name)
-        res
+      var nim_repr = ""
+      var mangled_name = ""
+      if input != "":
+        nim_repr = "\"$1\" > $2" % [self.namespace, input]
+      
+        let sub_repr = parseExpr(nim_repr).lispRepr()
+        hint sub_repr
+        let mi = self.substitute(sub_repr)
+        if mi != "":
+          mangled_name = enclose( "", mi, forced_name)
+        else:
+          self.known_nodes.add(sub_repr)
+      if mangled_name == "":
+        mangled_name = enclose(self.mangled_namespace, mangle_ident($input), forced_name)
+      mangled_name
 
       
 proc function(self: var MangleInfo, function:NimNode,
@@ -174,6 +227,7 @@ proc mangle_type(self: var MangleInfo, input: NimNode, still_const: bool = true)
     return sub
   case input.kind:
   of nnkEmpty: return "v"
+  of nnkPar: return mangle_type(self, input[0], still_const)
   of nnkRefTy:
     result = "R" & mangle_type(self, input[0], still_const)
   of nnkPtrTy:
@@ -181,37 +235,63 @@ proc mangle_type(self: var MangleInfo, input: NimNode, still_const: bool = true)
   of nnkVarTy:
     return mangle_type(self, input[0], false)
     #result = replace_abbreveations(self, result)
-  of nnkIdent:
+  of nnkIdent, nnkStrLit:
     if still_const:
       result = "K" & mangle_type(self, input, false)
     else:
       case $input:
       of  "string":
-        var mangled = ""
-        var template_expr = newStmtList()
-        # Too lazy to make AST by hands, so using the part of generated AST
-        template_expr.add(parseExpr("var q:var cchar")[0][1])
-        template_expr.add(parseExpr("var q:var char_traits[var cchar]")[0][1])
-        template_expr.add(parseExpr("var q:var allocator[var cchar]")[0][1])
-        var subfunc = parseExpr("proc basic_string()")
-        # std::string is a part of std namespace, so lets create it with all
-        # previous substitutions
-        var cust_mi = self
-        cust_mi.namespace = "std"
-        mangled = function(cust_mi, subfunc, template_expr, "__cxx11")
-        # Remove trailing void due to it is not actual function
-        mangled = mangled.substr(0, mangled.len()-2)
-        if self.known_nodes.len() < cust_mi.known_nodes.len():
-          for i in self.known_nodes.len()..<cust_mi.known_nodes.len():
-            self.known_nodes.add(cust_mi.known_nodes[i])
-        result = mangled
+        let bs_type = parseExpr(
+          """std > "__cxx11" > basic_string[var cchar,
+            var (std>char_traits[var cchar]), var (std>allocator[var cchar])]""")
+
+        result = mangle_type(self, bs_type, false)
+        for i in 0..<self.known_nodes.len():
+          hint("$1 - $2" % [number_to_substitution(i), self.known_nodes[i]])
+
+        return result
       else:
         return result & mangle_typename(self, $input)
   of nnkBracketExpr:
-    let arg = "I" & mangle_type(self, input[1]) & "E"
     let base = mangle_type(self, input[0], still_const)
-    result = base & arg
+    #hint base
+    #hint input[0].treeRepr
+    var arg: string = "I"
+    for i in 1..<input.len():
+      arg &= mangle_type(self, input[i])
+    arg &= "E"
+    #result = mangle_typename(self, $input[0], arg)
+    if base[base.len()-1] == 'E':
+      result = base[0..base.len()-2] & arg & 'E'
+    else:
+      result = base & arg
+    return result
+  of nnkInfix: # namespacing solution
+    if input[0].kind != nnkIdent or $input[0] != ">":
+      hint("Did you mean \">\" to specify namespace?")
+      error("Unknown infix operation: $1!" % input.lispRepr)
+    var submangle = self
+    var ns: string
+    case input[1].kind:
+    of nnkIdent, nnkStrLit:
+      ns = $input[1]
+      submangle.namespace = ns
+      var mns = substitute(submangle, ns)
+      if mns == "":
+        mns = mangle_ident(ns)
+        submangle.known_nodes.add(ns)
+      submangle.mangled_namespace = mns
+    of nnkInfix:
+      unwind_infixes(submangle, input[1])
+    else:
+      error("Unknown namespace specification: $1!" % input.lispRepr)
+    #hint submangle.mangled_namespace
+    result = mangle_type(submangle, input[2], still_const)
+    self.known_nodes = submangle.known_nodes
+    #return result
+    
   else:
+    hint(input.treeRepr())
     error("Unsupported NodeKind: " & $input.kind)
   self.known_nodes.add(input.lispRepr)
   
@@ -239,7 +319,6 @@ proc function(self: var MangleInfo, function:NimNode,
   expectKind(function, nnkProcDef)
   let arguments = function[3] # nnkFormalParams
   var mangled_templates = ""
-
   for t in templates.children():
     mangled_templates &= mangle_type(self, t)
   if mangled_templates != "":
@@ -274,7 +353,7 @@ proc mangle_native(function: string, headers: seq[string] = @[]): string {.compi
   for h in headers:
     source &= "#include "  & h & "\n"
   source &= function
-  gorge("g++ -x c++ -S -o- - | sed -n 's/^\\(_Z[^ ]\\+\\):$/\\1/gp'", source)
+  gorge("g++ -x c++ -S -o- - | sed -n 's/^\\(_Z[^ ]\\+\\):$/\\1/p' | head -n 1", source)
 
 
 macro test(constructed_n: string, native_cpp_n: string,
@@ -289,24 +368,56 @@ macro test(constructed_n: string, native_cpp_n: string,
   var f = parseExpr(constructed)
   var cpp = native_cpp
   if classname != "":
-    cpp = "class $1 { $2 };" % [classname, cpp]
+    let rt_bound = cpp.find(" ")
+    let rettype = cpp[0..rt_bound]
+    let fname = cpp[rt_bound+1..<cpp.len()]
+    cpp = "class $1 { $2; }; $3 $1::$4{}" % [classname, cpp, rettype, fname]
+  else:
+    cpp = cpp & "{}"
   if namespace != "":
     cpp = "namespace $1 { $2 }" % [namespace, cpp]
-  let native = mangle_native(cpp)
+  let native = mangle_native(cpp, @["<memory>", "<iostream>"])
   let specimen = mangle(mi, f, class= classname)
-  assert(specimen == native, "Test failed:\nConstr: " & specimen & "\nNative: " & native)
-  return parseExpr(
-    "echo \"\"\"Constr: $1\nNative: $2\nComparing output:\n$3\n==\n$4\nInternal test passed!\n\"\"\"" %
-      [constructed, cpp, specimen, native])
+  assert(specimen == native, "Test failed:\n$3 Constr: $1\n$3 Native: $2" %
+    [specimen, native, constructed_n.lineinfo()])
+  result = newStmtList()
+  result.add(parseExpr(
+    "assert(\"$3\" == \"$4\", \"\"\"Constr: $1\nNative: $2\nComparing output:\nConstr:$3\n==\nNative:$4\n\"\"\")" %
+      [constructed, cpp, specimen, native]))
       
   
 when isMainModule:
-  # basic string testing
+  # trivial function test
+  test("proc trivialfunc()", "void trivialfunc()")
+  # trivial namespace test
+  test("proc trivialfunc()", "void trivialfunc()", "somenamespace")
+  # trivial class test
+  test("proc trivialfunc()", "void trivialfunc()", "", "someclass")
+  # trivial class in namespace test
+  test("proc trivialfunc()", "void trivialfunc()", "somenamespace", "someclass")
+  # basic double namespace test
+  test("proc trivialfunc(q: var ptr (std>\"__cxx11\">messages[var cchar]))", "void trivialfunc(std::__cxx11::messages<char> *q)")
+  # basic_string testing
   test("proc namedWindow(v:ref string, q:var cint)",
-    "void namedWindow(const std::string& b, int w){}", "cv")
+    "void namedWindow(const std::string& b, int w)", "cv")
   # simple test
   test("proc waitKey(q:var cint)",
-    "int waitKey(int w){}", "cv")
+    "int waitKey(int w)", "cv")
+  # basic double namespace substitution test
+  test("proc trivialfunc(q: var ptr (std>\"__cxx11\">messages[var cchar]), w: var string)",
+    "void trivialfunc(std::__cxx11::messages<char> *q, std::string w)")
   # substitution basic test
   test("proc somefunc(a: var string, b: var string)",
-    "void somefunc(std::string a, std::string b) {}")
+    "void somefunc(std::string a, std::string b)")
+  # substitution hard test
+  test("proc somefunc(a: var string, b: var (std>allocator[var cchar]), c: var (std>char_traits[var cchar]))",
+    "void somefunc(std::string a, std::allocator<char> b, std::char_traits<char> c)", "std")
+  # hard substitution test
+  test("""proc trivialfunc(q: var string,
+    w: var (std>char_traits[var cchar]),
+    e: var(std>allocator[var cchar]),
+    r: var (std>"__cxx11">basic_string[var wchar_t, var (std>char_traits[var wchar_t]),
+      var (std>allocator[var wchar_t])])
+    )""",
+    """void trivialfunc(std::string q, std::char_traits<char> w, std::allocator<char> e,
+    std::basic_string<wchar_t>)""")
