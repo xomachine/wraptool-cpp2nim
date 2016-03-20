@@ -151,7 +151,6 @@ proc mangle_typename(self: var MangleInfo, input:string, forced_name: string = "
     of "decltype(auto)": "Dc"
     of "void": "v" # Actually it never happens
     else:
-      #error("Cannot find C++ equivalent for type " & $input)
       let mi = self.substitute(self.namespace & "::" & input & forced_name)
       if mi != "":
         mi
@@ -167,8 +166,7 @@ proc mangle_typename(self: var MangleInfo, input:string, forced_name: string = "
       
 proc function(self: var MangleInfo, function:NimNode,
   templates:NimNode = newEmptyNode(), class: string = ""): string {.compileTime.}
-# TODO: ввести категорию namespace в mangling типа, 
-# затем перейти к реализации замещений символов
+
 proc mangle_type(self: var MangleInfo, input: NimNode, still_const: bool = true): string {.compileTime.} =
   result = ""
   let sub = self.substitute(input.lispRepr())
