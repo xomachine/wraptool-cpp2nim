@@ -23,6 +23,7 @@ type
     namespace: string
     mangled_namespace: string
     known_nodes: seq[string]
+    nested_nodes: seq[int]
 
 
 
@@ -32,7 +33,14 @@ proc number_to_substitution(number: int): string {.compileTime.} =
     "S_"
   else:
     "S" & $(number - 1) & "_"
-    
+
+proc enclose(ns: string, t: string, name: string = "", force: bool = false): string {.compileTime.} =
+  var nested = force
+  result = ns & t & name
+  if ns[0] in '0'..'9': nested = true
+  if t[0] in '0'..'9' and (ns != "St" or name != ""): nested = true
+  if nested:
+    result = "N" & result & "E"
 
 proc substitute(self: MangleInfo, input:string): string {.compileTime.} =
   assert(npatterns.len() == default_subs.len(),
@@ -43,7 +51,7 @@ proc substitute(self: MangleInfo, input:string): string {.compileTime.} =
   for i in 1..self.known_nodes.len():
     let r = self.known_nodes.len() - i
     if input == self.known_nodes[r]:
-      return number_to_substitution(r)
+      return enclose(number_to_substitution(r), "", "", r in self.nested_nodes)
   return ""
 
 
@@ -58,7 +66,7 @@ proc mangle_ident(ident: string): string {.compileTime.} =
 proc new*[T: MangleInfo](namespace: string = ""): T {.compileTime.}=
   # Creates new MangleInfo with given namespace
   result = MangleInfo(namespace: namespace, mangled_namespace: "",
-    known_nodes: newSeq[string](0))
+    known_nodes: newSeq[string](0), nested_nodes: newSeq[int](0))
   var sub_ns = substitute(result, namespace)
   if sub_ns == "":
     sub_ns = mangle_ident(namespace)
@@ -91,17 +99,6 @@ proc unwind_infixes(self: var MangleInfo,infixes: NimNode) {.compileTime.}=
   self.mangled_namespace &= mangle_ident($infixes[2])
   self.namespace &= "::" & $infixes[2]
   self.known_nodes.add(infixes.lispRepr)
-    
-
-    
-proc enclose(ns: string, t: string, name: string = "", force: bool = false): string {.compileTime.} =
-  var nested = force
-  result = ns & t & name
-  if ns[0] in '0'..'9': nested = true
-  if t[0] in '0'..'9' and (ns != "St" or name != ""): nested = true
-  if ns.len() > 2: nested = true
-  if nested:
-    result = "N" & result & "E"
 
   
   
@@ -162,52 +159,51 @@ proc mangle_operator(sign: string, unary: bool = false): string {.compileTime.} 
 
 proc mangle_typename(self: var MangleInfo, input:string, forced_name: string = ""): string {.compileTime.} =
   case input:
-    of "wchar_t": "w"
-    of "bool": "b"
-    of "char", "cchar": "c"
-    of "cschar", "int8": "a"
-    of "cuchar": "h"
-    of "cshort", "int16": "s"
-    of "cushort", "uint16": "t"
-    of "cint", "int32": "i"
-    of "cuint", "uint32": "j"
-    of "clong": "l"
-    of "culong": "m"
-    of "clonglong", "int64": "x"
-    of "culonglong","uint64": "y"
-    of "int128": "n"
-    of "uint128": "o"
-    of "cfloat", "float32": "f"
-    of "cdouble", "float64": "d"
-    of "clongdouble", "BiggestFloat": "e"
-    of "std::nullptr_t", "typeof(nil)": "Dn"
-    of "auto": "Da"
-    of "float128": "g"
-    of "ellipsis": "z"
-    #of "IEEE 754r decimal floating point (64 bits)": "Dd"
-    #of "IEEE 754r decimal floating point (128 bits)": "De"
-    #of "IEEE 754r decimal floating point (32 bits)": "Df"
-    #of "IEEE 754r half-precision floating point (16 bits)": "Dh"
-    of "char32_t": "Di"
-    of "char16_t": "Ds"
-    of "decltype(auto)": "Dc"
-    of "void": "v" # Actually it never happens
-    else:
-      var nim_repr = ""
-      var mangled_name = ""
-      if input != "":
-        nim_repr = "\"$1\" > $2" % [self.namespace, input]
-      
-        let sub_repr = parseExpr(nim_repr).lispRepr()
-        #hint sub_repr
-        let mi = self.substitute(sub_repr)
-        if mi != "":
-          mangled_name = enclose( "", mi, forced_name)
-        else:
-          self.known_nodes.add(sub_repr)
-      if mangled_name == "":
-        mangled_name = enclose(self.mangled_namespace, mangle_ident($input), forced_name)
-      mangled_name
+  of "wchar_t": "w"
+  of "bool": "b"
+  of "char", "cchar": "c"
+  of "cschar", "int8": "a"
+  of "cuchar": "h"
+  of "cshort", "int16": "s"
+  of "cushort", "uint16": "t"
+  of "cint", "int32": "i"
+  of "cuint", "uint32": "j"
+  of "clong": "l"
+  of "culong": "m"
+  of "clonglong", "int64": "x"
+  of "culonglong","uint64": "y"
+  of "int128": "n"
+  of "uint128": "o"
+  of "cfloat", "float32": "f"
+  of "cdouble", "float64": "d"
+  of "clongdouble", "BiggestFloat": "e"
+  of "std::nullptr_t", "typeof(nil)": "Dn"
+  of "auto": "Da"
+  of "float128": "g"
+  of "ellipsis": "z"
+  #of "IEEE 754r decimal floating point (64 bits)": "Dd"
+  #of "IEEE 754r decimal floating point (128 bits)": "De"
+  #of "IEEE 754r decimal floating point (32 bits)": "Df"
+  #of "IEEE 754r half-precision floating point (16 bits)": "Dh"
+  of "char32_t": "Di"
+  of "char16_t": "Ds"
+  of "decltype(auto)": "Dc"
+  of "void": "v" # Actually it never happens
+  else:
+    if input != "":
+      let nim_repr = "\"$1\" > $2" % [self.namespace, input]
+    
+      let sub_repr = parseExpr(nim_repr).lispRepr()
+      #hint sub_repr
+      let mi = self.substitute(sub_repr)
+      if mi != "":
+        return mi
+      else:
+        self.known_nodes.add(sub_repr)
+    let mangled_name = enclose(self.mangled_namespace, mangle_ident($input), forced_name)
+    if mangled_name[0] == 'N' and input != "":
+      self.nested_nodes.add(self.known_nodes.len()-1)
+    mangled_name
 
       
 proc function(self: var MangleInfo, function:NimNode,
@@ -240,6 +236,8 @@ proc mangle_type(self: var MangleInfo, input: NimNode, still_const: bool = true)
 
         result = mangle_type(self, bs_type, false)
         # Debug string substitutions
+        #for i in self.nested_nodes:
+        #  hint ($i)
         #for i in 0..<self.known_nodes.len():
         #  hint("$1 - $2" % [number_to_substitution(i), self.known_nodes[i]])
 
@@ -278,6 +276,7 @@ proc mangle_type(self: var MangleInfo, input: NimNode, still_const: bool = true)
       error("Unknown namespace specification: $1!" % input.lispRepr)
     result = mangle_type(submangle, input[2], still_const)
     self.known_nodes = submangle.known_nodes
+    self.nested_nodes = submangle.nested_nodes
     
   else:
     hint(input.treeRepr())
@@ -385,7 +384,8 @@ when isMainModule:
   # trivial class in namespace test
   test("proc trivialfunc()", "void trivialfunc()", "somenamespace", "someclass")
   # basic double namespace test
-  test("proc trivialfunc(q: var ptr (std>\"__cxx11\">messages[var cchar]))", "void trivialfunc(std::__cxx11::messages<char> *q)")
+  test("proc trivialfunc(q: var ptr (std>\"__cxx11\">messages[var cchar]))",
+    "void trivialfunc(std::__cxx11::messages<char> *q)")
   # basic_string testing
   test("proc namedWindow(v:ref string, q:var cint)",
     "void namedWindow(const std::string& b, int w)", "cv")
