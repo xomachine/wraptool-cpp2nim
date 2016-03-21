@@ -3,22 +3,15 @@ import strutils
 
 # The name mangler for C++ Itanium mangler style
 
-#macro dump(e: expr): expr =
-#  result = newEmptyNode()
-#  hint e.treeRepr()
-  
-#dump:
-  #std > "__cxx11" > basic_string[var cchar, var std>char_traits[var cchar], var std>allocator[var cchar]]
-#  (q:var sss[hhh])
-  #std>otherstd>anotherstd>andstdagain[hello,hi]
   
 const npatterns = ["std",
   parseExpr(""""std">allocator""").lispRepr(),
   parseExpr(""""std">basic_string""").lispRepr(),
-  parseExpr("""std>basic_string[var cchar, var std>char_traits[var cchar], var std>allocator[var cchar]]""")
-    .lispRepr(),
-  "std::basic_istreamIcSt11char_traitsIcEE",
-  "std::basic_ostreamIcSt11char_traitsIcEE", "std::basic_iostreamIcSt11char_traitsIcEE"]
+  parseExpr("""std>basic_string[var cchar, var (std>char_traits[var cchar]),
+    var (std>allocator[var cchar])]""").lispRepr(),
+  parseExpr("""std>basic_istream[var cchar, var (std>char_traits[var cchar])]""").lispRepr(),
+  parseExpr("""std>basic_ostream[var cchar, var (std>char_traits[var cchar])]""").lispRepr(),
+  parseExpr("""std>basic_iostream[var cchar, var (std>char_traits[var cchar])]""").lispRepr(),]
 const default_subs = ["St", "Sa", "Sb", "Ss", "Si", "So", "Sd"]
 
 
@@ -206,7 +199,7 @@ proc mangle_typename(self: var MangleInfo, input:string, forced_name: string = "
         nim_repr = "\"$1\" > $2" % [self.namespace, input]
       
         let sub_repr = parseExpr(nim_repr).lispRepr()
-        hint sub_repr
+        #hint sub_repr
         let mi = self.substitute(sub_repr)
         if mi != "":
           mangled_name = enclose( "", mi, forced_name)
@@ -246,21 +239,19 @@ proc mangle_type(self: var MangleInfo, input: NimNode, still_const: bool = true)
             var (std>char_traits[var cchar]), var (std>allocator[var cchar])]""")
 
         result = mangle_type(self, bs_type, false)
-        for i in 0..<self.known_nodes.len():
-          hint("$1 - $2" % [number_to_substitution(i), self.known_nodes[i]])
+        # Debug string substitutions
+        #for i in 0..<self.known_nodes.len():
+        #  hint("$1 - $2" % [number_to_substitution(i), self.known_nodes[i]])
 
         return result
       else:
         return result & mangle_typename(self, $input)
   of nnkBracketExpr:
     let base = mangle_type(self, input[0], still_const)
-    #hint base
-    #hint input[0].treeRepr
     var arg: string = "I"
     for i in 1..<input.len():
       arg &= mangle_type(self, input[i])
     arg &= "E"
-    #result = mangle_typename(self, $input[0], arg)
     if base[base.len()-1] == 'E':
       result = base[0..base.len()-2] & arg & 'E'
     else:
@@ -285,10 +276,8 @@ proc mangle_type(self: var MangleInfo, input: NimNode, still_const: bool = true)
       unwind_infixes(submangle, input[1])
     else:
       error("Unknown namespace specification: $1!" % input.lispRepr)
-    #hint submangle.mangled_namespace
     result = mangle_type(submangle, input[2], still_const)
     self.known_nodes = submangle.known_nodes
-    #return result
     
   else:
     hint(input.treeRepr())
