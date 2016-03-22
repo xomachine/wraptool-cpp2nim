@@ -209,7 +209,9 @@ proc mangle_typename(self: var MangleInfo, input:string, forced_name: string = "
 proc function(self: var MangleInfo, function:NimNode,
   templates:NimNode = newEmptyNode(), class: string = ""): string {.compileTime.}
 
-proc mangle_type(self: var MangleInfo, input: NimNode, still_const: bool = true): string {.compileTime.} =
+proc mangle_type(self: var MangleInfo, input: NimNode,
+  still_const: bool = true): string {.compileTime.} =
+  
   result = ""
   let sub = self.substitute(input.lispRepr())
   if sub != "":
@@ -223,7 +225,6 @@ proc mangle_type(self: var MangleInfo, input: NimNode, still_const: bool = true)
     result = "P" & mangle_type(self, input[0], still_const)
   of nnkVarTy:
     return mangle_type(self, input[0], false)
-    #result = replace_abbreveations(self, result)
   of nnkIdent, nnkStrLit:
     if still_const:
       result = "K" & mangle_type(self, input, false)
@@ -233,17 +234,14 @@ proc mangle_type(self: var MangleInfo, input: NimNode, still_const: bool = true)
         let bs_type = parseExpr(
           """std > "__cxx11" > basic_string[var cchar,
             var (std>char_traits[var cchar]), var (std>allocator[var cchar])]""")
-
-        result = mangle_type(self, bs_type, false)
+        return mangle_type(self, bs_type, false)
         # Debug string substitutions
         #for i in self.nested_nodes:
         #  hint ($i)
         #for i in 0..<self.known_nodes.len():
         #  hint("$1 - $2" % [number_to_substitution(i), self.known_nodes[i]])
-
-        return result
       else:
-        return result & mangle_typename(self, $input)
+        return mangle_typename(self, $input)
   of nnkBracketExpr:
     let base = mangle_type(self, input[0], still_const)
     var arg: string = "I"
