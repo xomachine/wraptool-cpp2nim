@@ -7,13 +7,13 @@ import strutils
 const patterns = ["std",
   parseExpr(""""std">allocator""").lispRepr(),
   parseExpr(""""std">basic_string""").lispRepr(),
-  parseExpr("""std>basic_string[var cchar, var (std>char_traits[var cchar]),
-    var (std>allocator[var cchar])]""").lispRepr(),
-  parseExpr("""std>basic_istream[var cchar, var (std>char_traits[var cchar])]"""
+  parseExpr(""""std">basic_string[var cchar, var ("std">char_traits[var cchar]),
+    var ("std">allocator[var cchar])]""").lispRepr(),
+  parseExpr(""""std">basic_istream[var cchar, var ("std">char_traits[var cchar])]"""
     ).lispRepr(),
-  parseExpr("""std>basic_ostream[var cchar, var (std>char_traits[var cchar])]"""
+  parseExpr(""""std">basic_ostream[var cchar, var ("std">char_traits[var cchar])]"""
     ).lispRepr(),
-  parseExpr("""std>basic_iostream[var cchar, var (std>char_traits[var cchar])]"""
+  parseExpr(""""std">basic_iostream[var cchar, var ("std">char_traits[var cchar])]"""
     ).lispRepr(),]
 const default_substitutions = ["St", "Sa", "Sb", "Ss", "Si", "So", "Sd"]
 
