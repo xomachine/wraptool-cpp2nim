@@ -17,8 +17,6 @@ const patterns = ["std",
     ).lispRepr(),]
 const default_substitutions = ["St", "Sa", "Sb", "Ss", "Si", "So", "Sd"]
 
-
-
 type
   MangleInfo* = object
     # The structure containing
@@ -224,29 +222,37 @@ proc mangle_type(self: var MangleInfo, input: NimNode,
   of nnkEmpty: return "v"
   of nnkPar: return mangle_type(self, input[0], still_const)
   of nnkRefTy:
-    result = "R" & mangle_type(self, input[0], still_const)
+    result = "R" & mangle_type(self, input[0])
   of nnkPtrTy:
-    result = "P" & mangle_type(self, input[0], still_const)
+    result = "P" & mangle_type(self, input[0])
   of nnkVarTy:
-    return mangle_type(self, input[0], false)
+    result = mangle_type(self, input[0], false)
+    if  result[0] notin '0'..'9':
+      return result
   of nnkIdent, nnkStrLit:
+    var prefix = ""
     if still_const:
-      result = "K" & mangle_type(self, input, false)
+      prefix = "K"
+    #else:
+    case $input:
+    of "pointer":
+      var ptrnode = newNimNode(nnkPtrTy)
+      ptrnode.add(newEmptyNode())
+      return self.mangle_type(ptrnode, still_const)
+    of  "string":
+      let bs_type = parseExpr(
+        """std > "__cxx11" > basic_string[var cchar,
+          var (std>char_traits[var cchar]), var (std>allocator[var cchar])]""")
+      result = prefix & mangle_type(self, bs_type, false)
+      # Debug string substitutions
+      #for i in self.nested_nodes:
+      #  hint ($i)
+      #for i in 0..<self.known_nodes.len():
+      #  hint("$1 - $2" % [number_to_substitution(i), self.known_nodes[i]])
     else:
-      case $input:
-      of "pointer": result = "Pv"
-      of  "string":
-        let bs_type = parseExpr(
-          """std > "__cxx11" > basic_string[var cchar,
-            var (std>char_traits[var cchar]), var (std>allocator[var cchar])]""")
-        return mangle_type(self, bs_type, false)
-        # Debug string substitutions
-        #for i in self.nested_nodes:
-        #  hint ($i)
-        #for i in 0..<self.known_nodes.len():
-        #  hint("$1 - $2" % [number_to_substitution(i), self.known_nodes[i]])
-      else:
-        return mangle_typename(self, $input)
+      result = prefix & mangle_typename(self, $input)
+    if not still_const:
+      return result
   of nnkBracketExpr:
     let base = mangle_type(self, input[0], still_const)
     var arg: string = "I"
@@ -283,14 +289,13 @@ proc mangle_type(self: var MangleInfo, input: NimNode,
   
   of nnkProcTy:
     expectKind(input[0], nnkFormalParams)
-    hint input.treeRepr()
     let arguments = input[0]
     result = "F"
     for arg in arguments.children():
       if arg.kind == nnkIdentDefs:
         result &= self.mangle_type(arg[1])
       else:
-        result &= self.mangle_type(arg, false)
+        result &= self.mangle_type(arg)
     if arguments.len() < 2:
       result &= "v"
     result &= "E"
@@ -335,9 +340,10 @@ proc function(self: var MangleInfo, function:NimNode,
   if arguments.len() < 2:
     result &= mangle_type(self, newEmptyNode())
 # Debugging stuff
-#  for i in 0..<self.substitutions.len():
-#    hint mangled_func & ":" & number_to_substitution(i) & " " &
-#      self.substitutions[i] & "-" & self.known_nodes[i]
+#  if mangled_func == "3foo":
+#    for i in 0..<self.known_nodes.len():
+#      hint mangled_func & ":" & number_to_substitution(i) & " " &
+#        self.known_nodes[i]
 
 
 proc mangle*(self: var MangleInfo, function:NimNode,
@@ -404,7 +410,7 @@ when isMainModule:
   # trivial class in namespace test
   test("proc trivialfunc()", "void trivialfunc()", "somenamespace", "someclass")
   # basic double namespace test
-  test("proc trivialfunc(q: var ptr (std>\"__cxx11\">messages[var cchar]))",
+  test("proc trivialfunc(q: var ptr var (std>\"__cxx11\">messages[var cchar]))",
     "void trivialfunc(std::__cxx11::messages<char> *q)")
   # basic_string testing
   test("proc namedWindow(v:ref string, q:var cint)",
@@ -413,7 +419,7 @@ when isMainModule:
   test("proc waitKey(q:var cint)",
     "int waitKey(int w)", "cv")
   # basic double namespace substitution test
-  test("proc trivialfunc(q: var ptr (std>\"__cxx11\">messages[var cchar]), w: var string)",
+  test("proc trivialfunc(q: var ptr var (std>\"__cxx11\">messages[var cchar]), w: var string)",
     "void trivialfunc(std::__cxx11::messages<char> *q, std::string w)")
   # substitution basic test
   test("proc somefunc(a: var string, b: var string)",
@@ -434,8 +440,7 @@ when isMainModule:
   test("""proc func_of_func(a: ptr proc(a: var cint))""",
     """void func_of_func(void(*) (int))""")
   # argument function with substitutions
-  test("""proc foo(a: ptr proc(a: var pointer): pointer,
-  b: ptr proc(a: pointer): pointer,
-  c: ptr proc(a: var pointer): pointer)""",
+  test("""proc foo(a: ptr proc(a: var pointer): var pointer,
+  b: ptr proc(a: var ptr void): var pointer,
+  c: ptr proc(a: var pointer): ptr void)""",
   """void foo(void*(*)(void*),void*(*)(const void*),const void*(*)(void*))""")
-    
