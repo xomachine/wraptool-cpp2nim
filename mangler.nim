@@ -3,16 +3,19 @@ import strutils
 
 # The name mangler for C++ Itanium mangler style
 
-  
-const npatterns = ["std",
+# pre-defined substitutions
+const patterns = ["std",
   parseExpr(""""std">allocator""").lispRepr(),
   parseExpr(""""std">basic_string""").lispRepr(),
   parseExpr("""std>basic_string[var cchar, var (std>char_traits[var cchar]),
     var (std>allocator[var cchar])]""").lispRepr(),
-  parseExpr("""std>basic_istream[var cchar, var (std>char_traits[var cchar])]""").lispRepr(),
-  parseExpr("""std>basic_ostream[var cchar, var (std>char_traits[var cchar])]""").lispRepr(),
-  parseExpr("""std>basic_iostream[var cchar, var (std>char_traits[var cchar])]""").lispRepr(),]
-const default_subs = ["St", "Sa", "Sb", "Ss", "Si", "So", "Sd"]
+  parseExpr("""std>basic_istream[var cchar, var (std>char_traits[var cchar])]"""
+    ).lispRepr(),
+  parseExpr("""std>basic_ostream[var cchar, var (std>char_traits[var cchar])]"""
+    ).lispRepr(),
+  parseExpr("""std>basic_iostream[var cchar, var (std>char_traits[var cchar])]"""
+    ).lispRepr(),]
+const default_substitutions = ["St", "Sa", "Sb", "Ss", "Si", "So", "Sd"]
 
 
 
@@ -34,7 +37,8 @@ proc number_to_substitution(number: int): string {.compileTime.} =
   else:
     "S" & $(number - 1) & "_"
 
-proc enclose(ns: string, t: string, name: string = "", force: bool = false): string {.compileTime.} =
+proc enclose(ns: string, t: string, name: string = "",
+  force: bool = false): string {.compileTime.} =
   var nested = force
   result = ns & t & name
   if ns[0] in '0'..'9': nested = true
@@ -43,11 +47,11 @@ proc enclose(ns: string, t: string, name: string = "", force: bool = false): str
     result = "N" & result & "E"
 
 proc substitute(self: MangleInfo, input:string): string {.compileTime.} =
-  assert(npatterns.len() == default_subs.len(),
-    "Patterns length must be equal subs length!")
-  for i in 0..<npatterns.len():
-    if input == npatterns[i]:
-      return default_subs[i]
+  assert(patterns.len() == default_substitutions.len(),
+    "Patterns length must be equal to substitutions length!")
+  for i in 0..<patterns.len():
+    if input == patterns[i]:
+      return default_substitutions[i]
   for i in 1..self.known_nodes.len():
     let r = self.known_nodes.len() - i
     if input == self.known_nodes[r]:
@@ -56,7 +60,8 @@ proc substitute(self: MangleInfo, input:string): string {.compileTime.} =
 
 
 
-proc finalize(encoding: string): string {.compileTime.} = "_Z" & encoding
+proc finalize(encoding: string): string {.compileTime.} =
+  "_Z" & encoding
 
 proc mangle_ident(ident: string): string {.compileTime.} =
   if ident.len() > 0:
@@ -74,8 +79,9 @@ proc new*[T: MangleInfo](namespace: string = ""): T {.compileTime.}=
   
 proc unwind_infixes(self: var MangleInfo,infixes: NimNode) {.compileTime.}=
   expectKind(infixes, nnkInfix)
-  assert(infixes.len() == 3, "Strange infixes length!")
-  assert(infixes[2].kind in [nnkStrLit, nnkIdent], "Unknown node kind in infix: $1!" % infixes.treeRepr)
+  assert(infixes.len() == 3, "Strange infixes length: $1" % $infixes.len())
+  assert(infixes[2].kind in [nnkStrLit, nnkIdent],
+    "Unknown node kind in infix: $1!" % infixes.treeRepr)
   let already_done = self.substitute(infixes.lispRepr())
   if already_done != "":
     self.mangled_namespace = already_done
@@ -157,7 +163,8 @@ proc mangle_operator(sign: string, unary: bool = false): string {.compileTime.} 
     of "?": "qu"
     else: sign
 
-proc mangle_typename(self: var MangleInfo, input:string, forced_name: string = ""): string {.compileTime.} =
+proc mangle_typename(self: var MangleInfo, input:string,
+  forced_name: string = ""): string {.compileTime.} =
   case input:
   of "wchar_t": "w"
   of "bool": "b"
@@ -205,9 +212,6 @@ proc mangle_typename(self: var MangleInfo, input:string, forced_name: string = "
       self.nested_nodes.add(self.known_nodes.len()-1)
     mangled_name
 
-      
-proc function(self: var MangleInfo, function:NimNode,
-  templates:NimNode = newEmptyNode(), class: string = ""): string {.compileTime.}
 
 proc mangle_type(self: var MangleInfo, input: NimNode,
   still_const: bool = true): string {.compileTime.} =
@@ -318,7 +322,8 @@ proc function(self: var MangleInfo, function:NimNode,
     result &= mangle_type(self, newEmptyNode())
 # Debugging stuff
 #  for i in 0..<self.substitutions.len():
-#    hint mangled_func & ":" & number_to_substitution(i) & " " & self.substitutions[i] & "-" & self.known_nodes[i]
+#    hint mangled_func & ":" & number_to_substitution(i) & " " &
+#      self.substitutions[i] & "-" & self.known_nodes[i]
 
 
 proc mangle*(self: var MangleInfo, function:NimNode,
@@ -332,7 +337,8 @@ proc mangle*(self: var MangleInfo, function:NimNode,
   finalize(function(self, function, templates, class))
 
       
-proc mangle_native(function: string, headers: seq[string] = @[]): string {.compileTime.} =
+proc mangle_native(function: string,
+  headers: seq[string] = @[]): string {.compileTime.} =
   # Mangling via C++ compiller for code testing
   var source = ""
   source &= "#include <string>\n" # & header & "\n"
@@ -368,7 +374,9 @@ macro test(constructed_n: string, native_cpp_n: string,
     [specimen, native, constructed_n.lineinfo()])
   result = newStmtList()
   result.add(parseExpr(
-    "assert(\"$3\" == \"$4\", \"\"\"Constr: $1\nNative: $2\nComparing output:\nConstr:$3\n==\nNative:$4\n\"\"\")" %
+    "assert(\"$3\" == \"$4\"," &
+    "\"\"\"Constr: $1\nNative: $2\nComparing output:" &
+    "\nConstr:$3\n==\nNative:$4\n\"\"\")" %
       [constructed, cpp, specimen, native]))
       
   
