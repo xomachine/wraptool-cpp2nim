@@ -213,8 +213,9 @@ proc mangle_typename(self: var MangleInfo, input:string,
 
 proc mangle_type(self: var MangleInfo, input: NimNode,
   still_const: bool = true): string {.compileTime.} =
-  
   result = ""
+  if still_const:
+    result = "K"
   let sub = self.substitute(input.lispRepr())
   if sub != "":
     return sub
@@ -222,18 +223,14 @@ proc mangle_type(self: var MangleInfo, input: NimNode,
   of nnkEmpty: return "v"
   of nnkPar: return mangle_type(self, input[0], still_const)
   of nnkRefTy:
-    result = "R" & mangle_type(self, input[0])
+    result &= "R" & mangle_type(self, input[0])
   of nnkPtrTy:
-    result = "P" & mangle_type(self, input[0])
+    result &= "P" & mangle_type(self, input[0])
   of nnkVarTy:
     result = mangle_type(self, input[0], false)
     if  result[0] notin '0'..'9':
       return result
   of nnkIdent, nnkStrLit:
-    var prefix = ""
-    if still_const:
-      prefix = "K"
-    #else:
     case $input:
     of "pointer":
       var ptrnode = newNimNode(nnkPtrTy)
@@ -243,14 +240,14 @@ proc mangle_type(self: var MangleInfo, input: NimNode,
       let bs_type = parseExpr(
         """std > "__cxx11" > basic_string[var cchar,
           var (std>char_traits[var cchar]), var (std>allocator[var cchar])]""")
-      result = prefix & mangle_type(self, bs_type, false)
+      result &= mangle_type(self, bs_type, false)
       # Debug string substitutions
       #for i in self.nested_nodes:
       #  hint ($i)
       #for i in 0..<self.known_nodes.len():
       #  hint("$1 - $2" % [number_to_substitution(i), self.known_nodes[i]])
     else:
-      result = prefix & mangle_typename(self, $input)
+      result &= mangle_typename(self, $input)
     if not still_const:
       return result
   of nnkBracketExpr:
@@ -260,9 +257,9 @@ proc mangle_type(self: var MangleInfo, input: NimNode,
       arg &= mangle_type(self, input[i])
     arg &= "E"
     if base[base.len()-1] == 'E':
-      result = base[0..base.len()-2] & arg & 'E'
+      result &= base[0..base.len()-2] & arg & 'E'
     else:
-      result = base & arg
+      result &= base & arg
     return result
   of nnkInfix: # namespacing solution
     if input[0].kind != nnkIdent or $input[0] != ">":
@@ -413,7 +410,7 @@ when isMainModule:
   test("proc trivialfunc(q: var ptr var (std>\"__cxx11\">messages[var cchar]))",
     "void trivialfunc(std::__cxx11::messages<char> *q)")
   # basic_string testing
-  test("proc namedWindow(v:ref string, q:var cint)",
+  test("proc namedWindow(v: var ref string, q:var cint)",
     "void namedWindow(const std::string& b, int w)", "cv")
   # simple test
   test("proc waitKey(q:var cint)",
@@ -437,10 +434,10 @@ when isMainModule:
     """void trivialfunc(std::string q, std::char_traits<char> w, std::allocator<char> e,
     std::basic_string<wchar_t>)""")
   # trivial argument function
-  test("""proc func_of_func(a: ptr proc(a: var cint))""",
+  test("""proc func_of_func(a: var ptr proc(a: var cint))""",
     """void func_of_func(void(*) (int))""")
   # argument function with substitutions
-  test("""proc foo(a: ptr proc(a: var pointer): var pointer,
-  b: ptr proc(a: var ptr void): var pointer,
-  c: ptr proc(a: var pointer): ptr void)""",
+  test("""proc foo(a: var ptr proc(a: var pointer): var pointer,
+  b: var ptr proc(a: var ptr void): var pointer,
+  c: var ptr proc(a: var pointer): ptr void)""",
   """void foo(void*(*)(void*),void*(*)(const void*),const void*(*)(void*))""")
