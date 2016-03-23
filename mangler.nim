@@ -282,17 +282,17 @@ proc mangle_type(self: var MangleInfo, input: NimNode,
   
   of nnkProcTy:
     expectKind(input[0], nnkFormalParams)
+    hint input.treeRepr()
     let arguments = input[0]
     result = "F"
-    var return_value = "v"
     for arg in arguments.children():
       if arg.kind == nnkIdentDefs:
-        result &= self.mangle_type(arg[0])
+        result &= self.mangle_type(arg[1])
       else:
-        return_value = self.mangle_type(arg, false)
+        result &= self.mangle_type(arg, false)
     if arguments.len() < 2:
       result &= "v"
-    result &= return_value & "E"
+    result &= "E"
   else:
     hint(input.treeRepr())
     error("Unsupported NodeKind: " & $input.kind)
@@ -429,6 +429,12 @@ when isMainModule:
     )""",
     """void trivialfunc(std::string q, std::char_traits<char> w, std::allocator<char> e,
     std::basic_string<wchar_t>)""")
-  test("""proc func_of_func(a: ptr proc(): cint)""",
+  # trivial argument function
+  test("""proc func_of_func(a: ptr proc(a: var cint))""",
     """void func_of_func(void(*) (int))""")
+  # argument function with substitutions
+  test("""proc foo(a: ptr proc(a: var pointer): pointer,
+  b: ptr proc(a: pointer): pointer,
+  c: ptr proc(a: var pointer): pointer)""",
+  """void foo(void*(*)(void*),void*(*)(const void*),const void*(*)(void*))""")
     
