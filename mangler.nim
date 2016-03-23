@@ -234,7 +234,9 @@ proc mangle_type(self: var MangleInfo, input: NimNode,
     case $input:
     of "pointer":
       var ptrnode = newNimNode(nnkPtrTy)
-      ptrnode.add(newEmptyNode())
+      var varnode = newNimNode(nnkVarTy)
+      varnode.add(newIdentNode("void"))
+      ptrnode.add(varnode)
       return self.mangle_type(ptrnode, still_const)
     of  "string":
       let bs_type = parseExpr(
