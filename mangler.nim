@@ -234,6 +234,7 @@ proc mangle_type(self: var MangleInfo, input: NimNode,
       result = "K" & mangle_type(self, input, false)
     else:
       case $input:
+      of "pointer": result = "Pv"
       of  "string":
         let bs_type = parseExpr(
           """std > "__cxx11" > basic_string[var cchar,
