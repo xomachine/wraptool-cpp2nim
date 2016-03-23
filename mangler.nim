@@ -279,7 +279,20 @@ proc mangle_type(self: var MangleInfo, input: NimNode,
     result = mangle_type(submangle, input[2], still_const)
     self.known_nodes = submangle.known_nodes
     self.nested_nodes = submangle.nested_nodes
-    
+  
+  of nnkProcTy:
+    expectKind(input[0], nnkFormalParams)
+    let arguments = input[0]
+    result = "F"
+    var return_value = "v"
+    for arg in arguments.children():
+      if arg.kind == nnkIdentDefs:
+        result &= self.mangle_type(arg[0])
+      else:
+        return_value = self.mangle_type(arg, false)
+    if arguments.len() < 2:
+      result &= "v"
+    result &= return_value & "E"
   else:
     hint(input.treeRepr())
     error("Unsupported NodeKind: " & $input.kind)
@@ -416,3 +429,6 @@ when isMainModule:
     )""",
     """void trivialfunc(std::string q, std::char_traits<char> w, std::allocator<char> e,
     std::basic_string<wchar_t>)""")
+  test("""proc func_of_func(a: ptr proc(): cint)""",
+    """void func_of_func(void(*) (int))""")
+    
