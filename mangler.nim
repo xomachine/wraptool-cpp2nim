@@ -260,6 +260,16 @@ proc mangle_type(self: var MangleInfo, input: NimNode,
     if not still_const:
       return result
   of nnkBracketExpr:
+    if input[0].kind == nnkIdent and $input[0] == "seq":
+      var vector = input
+      vector[0] = parseExpr("\"std\">vector")
+      var varlocator = newNimNode(nnkVarTy)
+      var allocator = newNimNode(nnkBracketExpr)
+      allocator.add(parseExpr("\"std\">allocator"))
+      allocator.add(vector[1])
+      varlocator.add(allocator)
+      vector.add(varlocator)
+      return self.mangle_type(vector, still_const)
     let base = mangle_type(self, input[0], still_const)
     var arg: string = "I"
     for i in 1..<input.len():
@@ -358,7 +368,7 @@ proc mangle*(self: var MangleInfo, function:NimNode,
   # "ref" and "ptr" used in C++'s terms of "&" and "*"
   # Abscence of "var" considered as C++'s "const"
   # "string" will be considered as "std::string" 
-  #TODO: "seq" will be considered as "std::vector"
+  # "seq" will be considered as "std::vector"
   
   finalize(function(self, function, templates, class))
 
@@ -394,7 +404,7 @@ macro test(constructed_n: string, native_cpp_n: string,
     cpp = cpp & "{}"
   if namespace != "":
     cpp = "namespace $1 { $2 }" % [namespace, cpp]
-  let native = mangle_native(cpp, @["<memory>", "<iostream>"])
+  let native = mangle_native(cpp, @["<memory>", "<iostream>", "<vector>"])
   let specimen = mangle(mi, f, class= classname)
   assert(specimen == native, "Test failed:\n$3 Constr: $1\n$3 Native: $2" %
     [specimen, native, constructed_n.lineinfo()])
@@ -450,3 +460,6 @@ when isMainModule:
   b: var ptr proc(a: var ptr void): var pointer,
   c: var ptr proc(a: var pointer): ptr void)""",
   """void foo(void*(*)(void*),void*(*)(const void*),const void*(*)(void*))""")
+  # seq to vector conversion
+  test("""proc vecfunc(a:var seq[var cint])""",
+    """void vecfunc(std::vector<int> a)""")
