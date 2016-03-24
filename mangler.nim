@@ -1,5 +1,6 @@
 import macros
-import strutils
+from strutils import `%`, join
+from sequtils import filter
 
 # The name mangler for C++ Itanium mangler style
 
@@ -35,15 +36,21 @@ proc number_to_substitution(number: int): string {.compileTime.} =
   else:
     "S" & $(number - 1) & "_"
 
-proc enclose(ns: string, t: string, name: string = "",
-  force: bool = false): string {.compileTime.} =
-  var nested = force
-  result = ns & t & name
-  if ns[0] in '0'..'9': nested = true
-  if t[0] in '0'..'9' and (ns != "St" or name != ""): nested = true
-  if nested:
-    result = "N" & result & "E"
+proc enclose_if(force: bool = false, names: string): string {.compileTime.} =
+  if force:
+    "N" & names & "E"
+  else:
+    names
+    
+proc enclose(names: varargs[string]): string {.compileTime.} =
+  let joined = names.join("")
+  let nonempty_len = @names.filter(proc(x:string):bool {.closure.} = x != "").len()
+  let nested = nonempty_len > 2 or (nonempty_len > 1 and names[0] != "St")
+  enclose_if(nested, joined)
 
+
+
+    
 proc substitute(self: MangleInfo, input:string): string {.compileTime.} =
   assert(patterns.len() == default_substitutions.len(),
     "Patterns length must be equal to substitutions length!")
@@ -53,7 +60,7 @@ proc substitute(self: MangleInfo, input:string): string {.compileTime.} =
   for i in 1..self.known_nodes.len():
     let r = self.known_nodes.len() - i
     if input == self.known_nodes[r]:
-      return enclose(number_to_substitution(r), "", "", r in self.nested_nodes)
+      return enclose_if(r in self.nested_nodes, number_to_substitution(r))
   return ""
 
 
@@ -379,7 +386,7 @@ macro test(constructed_n: string, native_cpp_n: string,
   var f = parseExpr(constructed)
   var cpp = native_cpp
   if classname != "":
-    let rt_bound = cpp.find(" ")
+    let rt_bound = cpp.find(' ')
     let rettype = cpp[0..rt_bound]
     let fname = cpp[rt_bound+1..<cpp.len()]
     cpp = "class $1 { $2; }; $3 $1::$4{}" % [classname, cpp, rettype, fname]
@@ -393,9 +400,9 @@ macro test(constructed_n: string, native_cpp_n: string,
     [specimen, native, constructed_n.lineinfo()])
   result = newStmtList()
   result.add(parseExpr(
-    "assert(\"$3\" == \"$4\"," &
-    "\"\"\"Constr: $1\nNative: $2\nComparing output:" &
-    "\nConstr:$3\n==\nNative:$4\n\"\"\")" %
+    ("assert(\"$3\" == \"$4\"," &
+    "\"\"\"\nConstr: $1\nNative: $2\nComparing output:" &
+    "\nConstr:\"$3\"\n==\nNative:\"$4\"\n\"\"\")") %
       [constructed, cpp, specimen, native]))
       
   
