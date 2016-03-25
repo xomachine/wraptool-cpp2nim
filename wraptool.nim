@@ -1,40 +1,6 @@
 import macros
 from strutils import `%`
-
-proc generate_cpp_brackets(template_symbol: string,
-                           args: NimNode): string {.compiletime.} =
-  let isTop =
-    if args.kind == nnkFormalParams:
-      true
-    else:
-      false
-  if (not isTop) and not (args.kind == nnkBracketExpr):
-    error("Internal error while trying to parse arguments: $1 $2" %
-          [$args, args.lineinfo()])
-  var i = 0
-  for ch in args.children():
-    case ch.kind
-    of nnkIdent:
-      if $ch == template_symbol:
-        if isTop:
-          result = "'" & $i
-        else:
-          result = "*"
-        return
-    of nnkBracketExpr:
-      let body = template_symbol.generate_cpp_brackets(ch)
-      if body.len > 0:
-        if isTop:
-          result = "'" & body & $i
-        else:
-          result = "*" & body
-    else:
-      echo "Unexpected node:"
-      echo ch.treeRepr()
-      error("Internal error while trying to parse arguments: $1 $2" %
-            [$args, args.lineinfo()])
-    i+=1
-
+from native import generate_cpp_brackets
 
 
 proc annotate_class(header_pragma: string , ns_prefix: string, nimname: NimNode,
