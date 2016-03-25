@@ -1,14 +1,14 @@
 import macros
-from strutils import `%`
+from strutils import `%`, join
 from sequtils import map, toSeq
 
 ## This file provides tools to generate native Nim code with
-# the `{.importcpp.}` pragma usage
+## the `{.importcpp.}` pragma usage
 
 
 
 proc generate_cpp_brackets*(template_symbol: string,
-                           args: NimNode): string {.compiletime.} =
+  args: NimNode): string {.compiletime,noSideEffect.} =
   ## Converts Nims template parameters to notation for
   ## `{.importcpp.}` pragma
   ##  template_symbol - a symbol used in template proc declaration, e.g.:
@@ -33,6 +33,11 @@ proc generate_cpp_brackets*(template_symbol: string,
         else:
           return "*" & body
       inc(i)
+    if args.kind == nnkFormalParams:
+      error("""Can not find template specification in function arguments!
+Template argument: $1
+Arguments tree:\n $2""" %
+        [template_symbol, args.treeRepr])
     ""
   of nnkIdentDefs:
     template_symbol.generate_cpp_brackets(args[1])
@@ -40,11 +45,29 @@ proc generate_cpp_brackets*(template_symbol: string,
     error("Internal error while trying to parse arguments: $1 $2" %
           [args.treeRepr(), args.lineinfo()])
     ""
-proc generate_cpp_brackets*(template_symbols: seq[string],
-                           args: NimNode): string {.compiletime.} =
-  for template_symbol in template_symbols:
-    result &= generate_cpp_brackets(template_symbol, args)
+proc generate_cpp_brackets*(template_symbols: NimNode,
+  args: NimNode): string {.compiletime.} =
+  template_symbols.expectKind(nnkGenericParams)
+  toSeq(template_symbols.children())
+    .map(
+      proc(x: NimNode): string =
+        x.expectKind(nnkIdentDefs)
+        let xlen = x.len()
+        var ts = toSeq(x.children())
+        ts.setLen(xlen-2)
+        ts.map(
+          proc(y: NimNode):string =
+          y.expectKind(nnkIdent)
+          generate_cpp_brackets($y, args)
+          )
+        .join(",")
+      )
+    .join(",")
 
+    
+
+  
+    
 
 ########################
 # Test area
@@ -56,18 +79,14 @@ when isMainModule:
     let answer_string = $answer
     let test = parseExpr($testcase)
     test.expectKind(nnkProcDef)
-    let generics_ast = toSeq(test[2].children)
-    let generics = generics_ast.map(
-      proc(x: NimNode): string =
-        expectKind(x, nnkIdent)
-        $x
-      )
+    let generics = test[2]
     let formals = test[3]
     let brackets = generate_cpp_brackets(generics,
       formals)
-    assert(brackets == answer_string)
+    assert(brackets == answer_string, "\n$3Expected: $1\n$3Got: $2\n" %
+      [answer_string, brackets, callsite().lineinfo()])
     # generate_cpp_brackets test
   test_generate_cpp_brackets("proc q[T](w:T)", "'1")
   test_generate_cpp_brackets("proc q[T](w:T):T", "'0")
   test_generate_cpp_brackets("proc q[T](w:seq[T])", "'*1")
-  test_generate_cpp_brackets("proc q[T, U](w:seq[T], g: U)", "'*1'2")
+  test_generate_cpp_brackets("proc q[T, U](w:seq[T], g: U)", "'*1,'2")
