@@ -1,19 +1,28 @@
 import macros
-from strutils import `%`, join
+from strutils import `%`, join, endsWith
 from sequtils import map, toSeq, concat, repeat, delete
 
 ## This file provides tools to generate native Nim code with
 ## the `{.importcpp.}` pragma usage
 
 type
-  CppClass = ref object
+  CppClass* = ref object
     name: string
     cppname: string
     template_args: seq[NimNode]
   
-  State = object
+  SourceType* = enum
+    none, dynlib, header
+  WrapSource* = object
+    case kind: SourceType
+    of none: discard
+    of dynlib, header:
+      file: string
+  
+  State* = object
     namespace: string
     class: CppClass
+    source: WrapSource
 
 
 proc generate_cpp_brackets*(template_symbol: string,
@@ -76,8 +85,7 @@ proc generate_cpp_brackets*(template_symbols: seq[NimNode],
 
 proc generate_operator_call(op: string,
   unary: bool = false): string {.noSideEffect.} =
-  if unary:
-    op & "#"
+  if unary: op & "#"
   else:
     let i = (if op[0] in ['[', '(']: 1 else: op.len)
     "#" & op[0..<i] & "#" & op[i..^1]
@@ -111,6 +119,63 @@ proc generate_proc_call*(state: State, procedure: NimNode): string =
       "<" & toSeq(generics.children()).generate_cpp_brackets(formals) & ">"
     else: ""
   namespace_part & class_part & name & generics_part & "(@)"
+  
+proc generate_proc*(state: State, procedure: NimNode): NimNode =
+  ## Generates procedure import declaration for given procedure
+  ## This proc adds necessary pragmas and transform procedure
+  ## arguments and template parameters to use it with declared type/class
+  ## If procedure name has the same name with class it will be considered
+  ## as constructor and replaced by "proc new[T: <classname>](<params>):T"
+  ## or similiar proc
+  procedure.expectKind(nnkProcDef)
+  let is_method = (state.class != nil)
+  let is_constructor = (is_method and
+    procedure.name.kind in [nnkIdent, nnkPostfix] and
+    procedure.name.basename.lispRepr == ("Ident(!\"$1\")" % state.class.name))
+  # Name standartization
+  let procname =
+    if procedure.name.kind == nnkPostfix: procedure.name
+    else: procedure.name.postfix("*")
+  result = procedure
+  result.name = procname
+  if is_constructor:
+  # Setting return type and constructor template specialization
+    if result[2].kind == nnkEmpty:
+      result[2] = newNimNode(nnkGenericParams)
+    result[2].insert(0, newTree(nnkIdentDefs,
+      newIdentNode("ClassName"),
+      newIdentNode(state.class.name),
+      newEmptyNode()))
+    result[3][0] = newIdentNode("ClassName")
+  elif is_method:
+  # Inserting "this" into args to call proc as method
+    result[3].insert(1, newTree(nnkIdentDefs,
+      newIdentNode("this"),
+      newIdentNode(state.class.name),
+      newEmptyNode()))
+  # Pragmas generation
+  if result.pragma.kind == nnkEmpty:
+    result.pragma = newNimNode(nnkPragma)
+  result.pragma.add(newTree(nnkExprColonExpr,
+    newIdentNode("importcpp"),
+    newStrLitNode(state.generate_proc_call(result))))
+  result.pragma.add((case state.source.kind
+    of none: newIdentNode("nodecl")
+    of header: newTree(nnkExprColonExpr,
+        newIdentNode("header"),
+        newStrLitNode(state.source.file))
+    of dynlib: newTree(nnkExprColonExpr,
+      newIdentNode("dynlib"),
+      newStrLitNode(state.source.file))
+    ))
+  if is_constructor:
+    # Latest name changing to avoid affecting pragma
+    # generation
+    result.pragma.add(newIdentNode("constructor"))
+    result.name = newIdentNode("new").postfix("*")
+    
+  
+  
 
 ########################
 # Test area
@@ -118,8 +183,9 @@ proc generate_proc_call*(state: State, procedure: NimNode): string =
 when isMainModule:   
   from test_tools import test
   proc n(x: string): NimNode = parseExpr(x)
-  # generate_cpp_brackets test
+  
   static:
+    # generate_cpp_brackets test
     test(@[n"T"].generate_cpp_brackets(n"proc q(w: T)"[3]), "'1")
     test(@[n"T"].generate_cpp_brackets(n"proc q(w: T):T"[3]), "'0")
     test(@[n"T"].generate_cpp_brackets(n"proc q(w: seq[T])"[3]), "'*1")
@@ -127,20 +193,44 @@ when isMainModule:
       .generate_cpp_brackets(n"proc q(w: seq[T], g:U)"[3]),
       "'*1,'2")
   
-  # generate_proc_call test
-  static:
+    # Test data
     let es = State()
+    let ns = State(namespace: "std")
     let test_class = new CppClass
+    let cs = State(class: test_class)
     test_class.cppname = "someclass"
     test_class.name = "someclass"
+    let template_class = new CppClass
+    let tcs = State(class: template_class)
+    template_class.name = "tclass"
+    template_class.cppname = "_tclass"
+    template_class.template_args = @[newIdentNode("T"), newIdentNode("Y")]
+    
+    # generate_proc_call test
     test(es.generate_proc_call(n"proc q()"), "q(@)")
     test(es.generate_proc_call(n"proc `+`(q: int, w: int)"), "#+#")
     test(es.generate_proc_call(n"proc `[]`(q: int, w: int)"), "#[#]")
     test(es.generate_proc_call(n"proc q[T](w:T)"), "q<'1>(@)")
-    test(State(namespace: "std").generate_proc_call(n"proc q[T](w:T)"),
+    test(ns.generate_proc_call(n"proc q[T](w:T)"),
       "std::q<'1>(@)")
-    test(State(class: test_class).generate_proc_call(n"proc q[T](w:T)"),
+    test(cs.generate_proc_call(n"proc q[T](w:T)"),
       "someclass::q<'1>(@)")
-    test_class.template_args = @[newIdentNode("T"), newIdentNode("Y")]
-    test(State(class: test_class).generate_proc_call(n"proc q[W](w:T, e:W): Y"),
-      "someclass<'1,'0>::q<'2>(@)")
+    test(tcs.generate_proc_call(n"proc q[W](w:T, e:W): Y"),
+      "_tclass<'1,'0>::q<'2>(@)")
+      
+    # generate_proc test
+    test(es.generate_proc(n"proc q()"),
+      n"""proc q*() {.importcpp:"q(@)", nodecl.}""")
+    test(es.generate_proc(n"proc q(w: cint): char"),
+      n"""proc q*(w: cint): char {.importcpp:"q(@)", nodecl.}""")
+    test(es.generate_proc(n"proc q[T](w: T)"),
+      n"""proc q*[T](w: T) {.importcpp:"q<'1>(@)", nodecl.}""")
+    test(cs.generate_proc(n"proc q*[T](w: T)"),
+      n"""proc q*[T](this: someclass, w: T)
+      {.importcpp:"someclass::q<'2>(@)", nodecl.}""")
+    test(cs.generate_proc(n"proc someclass[T](w: T)"),
+      n"""proc new*[ClassName: someclass, T](w: T): ClassName
+      {.importcpp:"someclass::someclass<'0,'1>(@)", nodecl, constructor.}""")
+    test(tcs.generate_proc(n"proc q[G](w: G, e: T): seq[Y]"),
+      n"""proc q*[G](this: tclass[T, Y], w: G, e: T): seq[Y]
+      {.importcpp:"_tclass<'3,'*0>::q<'2>(@)", nodecl.}""")
