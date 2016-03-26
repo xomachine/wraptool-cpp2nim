@@ -58,21 +58,20 @@ Arguments tree:\n $2""" %
 proc generate_cpp_brackets*(template_symbols: seq[NimNode],
   args: NimNode): string =
   template_symbols.map(
-      proc(x: NimNode): string =
-        case x.kind
-        of nnkIdent: generate_cpp_brackets($x, args)
-        of nnkIdentDefs:
-          let xlen = x.len()
-          var ts = toSeq(x.children())
-          ts.setLen(xlen-2)
-          ts.map(
+    proc(x: NimNode): string =
+      case x.kind
+      of nnkIdent: generate_cpp_brackets($x, args)
+      of nnkIdentDefs:
+        let ts = toSeq(x.children())
+        ts[0..^3]
+          .map(
             proc(y: NimNode):string =
               y.expectKind(nnkIdent)
               generate_cpp_brackets($y, args)
-            ).join(",")
-        else:
-          error("Unexpected node: $1" % $x.kind)
-          ""
+          ).join(",")
+      else:
+        error("Unexpected node: $1" % $x.kind)
+        ""
     ).join(",")
 
 proc generate_operator_call(op: string,
@@ -80,7 +79,8 @@ proc generate_operator_call(op: string,
   if unary:
     op & "#"
   else:
-    "# " & op & " #"
+    let i = (if op[0] in ['[', '(']: 1 else: op.len)
+    "#" & op[0..<i] & "#" & op[i..^1]
     
 proc generate_proc_call*(state: State, procedure: NimNode): string =
   ## Generates string for importcpp pragma
@@ -88,22 +88,14 @@ proc generate_proc_call*(state: State, procedure: NimNode): string =
   let formals = procedure[3]
   formals.expectKind(nnkFormalParams)
   let generics = procedure[2]
-  var name = ""
-  case procedure[0].kind:
-  of nnkAccQuoted:
-    return generate_operator_call($procedure[0][0], formals.len() < 3)
-  of nnkPostfix:
-    case procedure[0].basename.kind
-    of nnkIdent: name = $procedure[0].basename
-    of nnkAccQuoted:
-      return generate_operator_call($procedure[0].basename[0], formals.len() < 3)
-    else:
-      error("Unknown Node: $1" % $procedure[0].basename.kind)
-  of nnkIdent:
-    name = $procedure[0]
-  else:
-    error("Unknown Node: $1" % $procedure[0].kind)
-
+  if procedure[0].kind == nnkAccQuoted or
+    procedure[0].basename.kind == nnkAccQuoted:
+    let op =
+      if procedure[0].kind == nnkAccQuoted:
+        procedure[0][0]
+      else: procedure[0].basename[0]
+    return generate_operator_call($op, formals.len() < 3)
+  let name = $procedure[0].basename
   let namespace_part = 
     if state.namespace != nil: state.namespace & "::"
     else: ""
@@ -119,46 +111,43 @@ proc generate_proc_call*(state: State, procedure: NimNode): string =
       "<" & toSeq(generics.children()).generate_cpp_brackets(formals) & ">"
     else: ""
   namespace_part & class_part & name & generics_part & "(@)"
-  
-    
 
 ########################
 # Test area
 ########################
-when isMainModule:
-  # generate_cpp_brackets test
-  proc test_generate_cpp_brackets(testcase: string, answer: string){.compileTime.} =
-    let test = parseExpr($testcase)
-    test.expectKind(nnkProcDef)
-    let test_result = toSeq(test[2]).generate_cpp_brackets(test[3])
-    assert(test_result == answer, "\nExpected: $1\nGot: $2\n" %
-      [answer, test_result])
+when isMainModule:   
+  template test[T](code:expr, answer: T) = 
+    let ii = instantiationInfo()
+    let position = "$1($2, 1)" % [ii.filename, $ii.line]
+    let test_result = (code)
+    if test_result != answer:
+      warning("\n$3Expected: $1\n$3Got: $2" %
+        [$answer, test_result, position])
   
+  proc n(x: string): NimNode = parseExpr(x)
+  # generate_cpp_brackets test
   static:
-    test_generate_cpp_brackets("proc q[T](w:T)", "'1")
-    test_generate_cpp_brackets("proc q[T](w:T):T", "'0")
-    test_generate_cpp_brackets("proc q[T](w:seq[T])", "'*1")
-    test_generate_cpp_brackets("proc q[T, U](w:seq[T], g: U)", "'*1,'2")
+    test(@[n"T"].generate_cpp_brackets(n"proc q(w: T)"[3]), "'1")
+    test(@[n"T"].generate_cpp_brackets(n"proc q(w: T):T"[3]), "'0")
+    test(@[n"T"].generate_cpp_brackets(n"proc q(w: seq[T])"[3]), "'*1")
+    test(@[n"T", n"U"]
+      .generate_cpp_brackets(n"proc q(w: seq[T], g:U)"[3]),
+      "'*1,'2")
   
   # generate_proc_call test
-  proc test_generate_proc_call(testcase: string, answer: string,
-    state: State = State()) {.compileTime.} =
-    let test = parseExpr($testcase)
-    test.expectKind(nnkProcDef)
-    let test_result = state.generate_proc_call(test)
-    assert(test_result == answer, "\nExpected: $1\nGot: $2\n" %
-      [answer, test_result])
-  
   static:
+    let es = State()
     let test_class = new CppClass
     test_class.cppname = "someclass"
     test_class.name = "someclass"
-    test_generate_proc_call("proc q()", "q(@)")
-    test_generate_proc_call("proc `+`(q: int, w: int)", "# + #")
-    test_generate_proc_call("proc q[T](w:T)", "q<'1>(@)")
-    test_generate_proc_call("proc q[T](w:T)", "std::q<'1>(@)", State(namespace: "std"))
-    test_generate_proc_call("proc q[T](w:T)", "someclass::q<'1>(@)",
-      State(class: test_class))
+    test(es.generate_proc_call(n"proc q()"), "q(@)")
+    test(es.generate_proc_call(n"proc `+`(q: int, w: int)"), "#+#")
+    test(es.generate_proc_call(n"proc `[]`(q: int, w: int)"), "#[#]")
+    test(es.generate_proc_call(n"proc q[T](w:T)"), "q<'1>(@)")
+    test(State(namespace: "std").generate_proc_call(n"proc q[T](w:T)"),
+      "std::q<'1>(@)")
+    test(State(class: test_class).generate_proc_call(n"proc q[T](w:T)"),
+      "someclass::q<'1>(@)")
     test_class.template_args = @[newIdentNode("T"), newIdentNode("Y")]
-    test_generate_proc_call("proc q[W](w:T, e:W): Y", "someclass<'1,'0>::q<'2>(@)",
-      State(class: test_class))
+    test(State(class: test_class).generate_proc_call(n"proc q[W](w:T, e:W): Y"),
+      "someclass<'1,'0>::q<'2>(@)")
