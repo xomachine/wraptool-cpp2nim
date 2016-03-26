@@ -7,8 +7,8 @@ Macros allow you create C++ code wrapper in style:
 ```Nimrod
 wrapheader "<opencv2/core.hpp>":
   namespace "cv":
-    class "Size_" as Size[T]:
-      proc Size(w, h: T)
+    class "Rect_" as Rect[T]:
+      proc Rect(x, y, w, h: T)
       proc area*(): T
       
     class Mat:
