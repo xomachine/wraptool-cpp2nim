@@ -1,16 +1,12 @@
 import macros
 from strutils import `%`, join, endsWith
 from sequtils import map, toSeq, concat, repeat, delete
+from cppclass import CppClass, new, declaration
 
 ## This file provides tools to generate native Nim code with
 ## the `{.importcpp.}` pragma usage
 
 type
-  CppClass* = ref object
-    name: string
-    cppname: string
-    template_args: seq[NimNode]
-  
   SourceType* = enum
     none, dynlib, header
   WrapSource* = object
@@ -151,7 +147,7 @@ proc generate_proc*(state: State, procedure: NimNode): NimNode =
   # Inserting "this" into args to call proc as method
     result[3].insert(1, newTree(nnkIdentDefs,
       newIdentNode("this"),
-      newIdentNode(state.class.name),
+      state.class.declaration(),
       newEmptyNode()))
   # Pragmas generation
   if result.pragma.kind == nnkEmpty:
@@ -182,7 +178,7 @@ proc generate_proc*(state: State, procedure: NimNode): NimNode =
 ########################
 when isMainModule:   
   from test_tools import test
-  proc n(x: string): NimNode = parseExpr(x)
+  proc n(x: string): NimNode {.compileTime.} = parseExpr(x)
   
   static:
     # generate_cpp_brackets test
@@ -196,16 +192,11 @@ when isMainModule:
     # Test data
     let es = State()
     let ns = State(namespace: "std")
-    let test_class = new CppClass
+    let test_class = new[CppClass](n"someclass")
     let cs = State(class: test_class)
-    test_class.cppname = "someclass"
-    test_class.name = "someclass"
-    let template_class = new CppClass
-    let tcs = State(class: template_class)
-    template_class.name = "tclass"
-    template_class.cppname = "_tclass"
-    template_class.template_args = @[newIdentNode("T"), newIdentNode("Y")]
     
+    let template_class = new[CppClass](n"tclass[T, Y]", "_tclass")
+    let tcs = State(class: template_class)
     # generate_proc_call test
     test(es.generate_proc_call(n"proc q()"), "q(@)")
     test(es.generate_proc_call(n"proc `+`(q: int, w: int)"), "#+#")
@@ -233,4 +224,4 @@ when isMainModule:
       {.importcpp:"someclass::someclass<'0,'1>(@)", nodecl, constructor.}""")
     test(tcs.generate_proc(n"proc q[G](w: G, e: T): seq[Y]"),
       n"""proc q*[G](this: tclass[T, Y], w: G, e: T): seq[Y]
-      {.importcpp:"_tclass<'3,'*0>::q<'2>(@)", nodecl.}""")
+      {.importcpp:"_tclass<'*1,'*0>::q<'2>(@)", nodecl.}""")
