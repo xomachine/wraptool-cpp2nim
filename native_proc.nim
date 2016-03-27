@@ -2,7 +2,7 @@ import macros
 from strutils import `%`, join, endsWith
 from sequtils import map, toSeq, concat, repeat, delete
 from cppclass import CppClass, declaration, newCppClass
-from state import State, WrapSource, SourceType
+from state import State, source_declaration
 
 ## This file provides tools to generate native Nim code with
 ## the `{.importcpp.}` pragma usage
@@ -141,15 +141,7 @@ proc generate_proc*(state: State, procedure: NimNode): NimNode =
   result.pragma.add(newTree(nnkExprColonExpr,
     newIdentNode("importcpp"),
     newStrLitNode(state.generate_proc_call(result))))
-  result.pragma.add((case state.source.kind
-    of none: newIdentNode("nodecl")
-    of header: newTree(nnkExprColonExpr,
-        newIdentNode("header"),
-        newStrLitNode(state.source.file))
-    of dynlib: newTree(nnkExprColonExpr,
-      newIdentNode("dynlib"),
-      newStrLitNode(state.source.file))
-    ))
+  result.pragma.add(state.source_declaration)
   if is_constructor:
     # Latest name changing to avoid affecting pragma
     # generation
