@@ -2,24 +2,10 @@ import macros
 from strutils import `%`, join, endsWith
 from sequtils import map, toSeq, concat, repeat, delete
 from cppclass import CppClass, new, declaration
+from state import State, WrapSource, SourceType
 
 ## This file provides tools to generate native Nim code with
 ## the `{.importcpp.}` pragma usage
-
-type
-  SourceType* = enum
-    none, dynlib, header
-  WrapSource* = object
-    case kind: SourceType
-    of none: discard
-    of dynlib, header:
-      file: string
-  
-  State* = object
-    namespace: string
-    class: CppClass
-    source: WrapSource
-
 
 proc generate_cpp_brackets*(template_symbol: string,
   args: NimNode): string {.noSideEffect.} =
