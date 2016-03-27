@@ -15,12 +15,16 @@ proc generate_type_declaration(state: State): string =
   namespace_prefix & state.class.cppname & template_params
 
 proc generate_type_pragma(state: State): NimNode =
+  ## Generates pragma for type declaration
   let importcpp = newTree(nnkExprColonExpr,
     newIdentNode("importcpp"),
     newStrLitNode(state.generate_type_declaration))
   newTree(nnkPragma, importcpp, state.source_declaration)
 
 proc generate_type*(state: State): NimNode =
+  ## Generates type declaration for current class
+  ## Returned declaration must be placed into TypeSection node
+  ## Given state must include class field with current CppClass
   assert(state.class != nil, "Can not generate type without state.class!")
   let emptyobject = newTree(nnkObjectTy, repeat(newEmptyNode(), 3))
   let pragmaexpr = newTree(nnkPragmaExpr,
