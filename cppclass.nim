@@ -14,9 +14,8 @@ proc new*[T: CppClass](declaration: NimNode, cppname: string = ""): T =
     assert(declaration.len() > 1,
       "Small bracket expression passed as declaration of type: " & $declaration.len())
     declaration[0].expectKind(nnkIdent)
-    result.name = $declaration[0]
-    result.template_args = toSeq(declaration.children())
-    result.template_args.delete(0)
+    result.name = $(declaration[0])
+    result.template_args = toSeq(declaration.items)[1..<declaration.len]
   of nnkIdent:
     result.name = $declaration
     result.template_args = @[]
