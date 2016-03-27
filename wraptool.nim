@@ -1,6 +1,6 @@
 import macros
 from strutils import `%`
-from native import generate_cpp_brackets
+from native_proc import generate_cpp_brackets
 
 
 proc annotate_class(header_pragma: string , ns_prefix: string, nimname: NimNode,
