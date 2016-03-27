@@ -1,7 +1,7 @@
 import macros
 from strutils import `%`, join, endsWith
 from sequtils import map, toSeq, concat, repeat, delete
-from cppclass import CppClass, new, declaration
+from cppclass import CppClass, declaration, newCppClass
 from state import State, WrapSource, SourceType
 
 ## This file provides tools to generate native Nim code with
@@ -178,10 +178,9 @@ when isMainModule:
     # Test data
     let es = State()
     let ns = State(namespace: "std")
-    let test_class = new[CppClass](n"someclass")
+    let test_class = newCppClass(n"someclass")
     let cs = State(class: test_class)
-    
-    let template_class = new[CppClass](n"tclass[T, Y]", "_tclass")
+    let template_class = newCppClass(n""""_tclass" as tclass[T, Y]""")
     let tcs = State(class: template_class)
     # generate_proc_call test
     test(es.generate_proc_call(n"proc q()"), "q(@)")
