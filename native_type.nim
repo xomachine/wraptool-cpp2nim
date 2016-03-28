@@ -2,7 +2,7 @@ from state import State, source_declaration
 from cppclass import CppClass, newCppClass, declaration
 from native_proc import generate_proc, generate_proc_call
 from strutils import `%`
-from sequtils import repeat, concat
+from sequtils import repeat, concat, toSeq, filter, map
 import macros
 
 proc generate_type_declaration(state: State): string =
@@ -22,12 +22,19 @@ proc generate_type_pragma(state: State): NimNode =
     newStrLitNode(state.generate_type_declaration))
   newTree(nnkPragma, importcpp, state.source_declaration)
 
-proc generate_type*(state: State): NimNode =
+proc generate_type*(state: State, statements: NimNode = newStmtList()): NimNode =
   ## Generates type declaration for current class
   ## Returned declaration must be placed into TypeSection node
   ## Given state must include class field with current CppClass
   assert(state.class != nil, "Can not generate type without state.class!")
-  let emptyobject = newTree(nnkObjectTy, repeat(newEmptyNode(), 3))
+  statements.expectKind(nnkStmtList)
+  let class_fields = toSeq(statements.children())
+    .filter(proc (i: NimNode): bool = 
+      (i.kind == nnkCall or (i.kind == nnkInfix and $i[0] == "as")))
+    .map(proc (i:NimNode): NimNode = newTree(nnkIdentDefs)) # TODO: Call var parser
+  let reclist = if class_fields.len > 0 : newTree(nnkRecList, class_fields)
+    else: newEmptyNode()
+  let emptyobject = newTree(nnkObjectTy, repeat(newEmptyNode(), 2).concat(@[reclist]))
   let pragmaexpr = newTree(nnkPragmaExpr,
     newIdentNode(state.class.name).postfix("*"),
     state.generate_type_pragma)
@@ -55,7 +62,7 @@ proc generate_destructor*(state: State): NimNode =
 when isMainModule:
   from test_tools import test
   from macros import parseExpr
-  proc n(x: string): NimNode = x.parseExpr
+  proc n(x: string): NimNode {.compileTime.} = x.parseExpr
   static:
     let sc = newCppClass(n"SomeClass")
     let scs = State(class: sc)
@@ -72,3 +79,4 @@ when isMainModule:
     test(scs.generate_destructor(),
       n"""proc `=destroy`*(this: var SomeClass)
       {.importcpp:"SomeClass::~SomeClass(@)", nodecl, destructor.}""")
+    
