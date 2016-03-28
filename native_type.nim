@@ -76,8 +76,8 @@ when isMainModule:
         TemplateClass* {.importcpp:"_tclass<'0>", nodecl.} [T, V] = object"""[0])
     test(scs.generate_basic_constructor(),
       n"""proc newSomeClass*(): SomeClass
-      {.importcpp:"SomeClass::SomeClass(@)", nodecl, constructor.}""")
+      {.importcpp:"SomeClass(@)", nodecl, constructor.}""")
     test(scs.generate_destructor(),
       n"""proc `=destroy`*(this: var SomeClass)
-      {.importcpp:"SomeClass::~SomeClass(@)", nodecl, destructor.}""")
+      {.importcpp:"#.SomeClass::~SomeClass(@)", nodecl, destructor.}""")
     

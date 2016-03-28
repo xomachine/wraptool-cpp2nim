@@ -87,7 +87,6 @@ proc generate_proc_call*(state: State, procedure: NimNode): string =
     else: procedure.name
   if namenode.kind == nnkAccQuoted:
     if namenode.len == 1: # Operator but not a destructor
-      hint formals.treeRepr
       return generate_operator_call($namenode[0], formals.len() - 1)
   let name = 
     if namenode.len > 1 and namenode[1].repr == "destroy": # Destructor
@@ -186,10 +185,10 @@ when isMainModule:
     test(ns.generate_proc_call(n"proc q[T](w:T)"),
       "std::q<'1>(@)")
     test(cs.generate_proc_call(n"proc q[T](w:T)"),
-      "someclass::q<'1>(@)")
+      "#.someclass::q<'1>(@)")
     
     test(tcs.generate_proc_call(n"proc q[W](w:T, e:W): Y"),
-      "_tclass<'1,'0>::q<'2>(@)")
+      "#._tclass<'1,'0>::q<'2>(@)")
       
     # generate_proc test
     test(es.generate_proc(n"proc q()"),
@@ -200,13 +199,13 @@ when isMainModule:
       n"""proc q*[T](w: T) {.importcpp:"q<'1>(@)", nodecl.}""")
     test(cs.generate_proc(n"proc q*[T](w: T)"),
       n"""proc q*[T](this: var someclass, w: T)
-      {.importcpp:"someclass::q<'2>(@)", nodecl.}""")
+      {.importcpp:"#.someclass::q<'2>(@)", nodecl.}""")
     test(cs.generate_proc(n"proc `[]=`(w: int, u:int)"), 
       n"""proc `[]=`*(this: var someclass, w: int, u: int)
       {.importcpp:"#[#]=#", nodecl.}""")
     test(cs.generate_proc(n"proc someclass[T](w: T)"),
       n"""proc newsomeclass*[T](w: T): someclass
-      {.importcpp:"someclass::someclass<'1>(@)", nodecl, constructor.}""")
+      {.importcpp:"someclass<'1>(@)", nodecl, constructor.}""")
     test(tcs.generate_proc(n"proc q[G](w: G, e: T): seq[Y]"),
       n"""proc q*[G](this: var tclass[T, Y], w: G, e: T): seq[Y]
-      {.importcpp:"_tclass<'*1,'*0>::q<'2>(@)", nodecl.}""")
+      {.importcpp:"#._tclass<'*1,'*0>::q<'2>(@)", nodecl.}""")
