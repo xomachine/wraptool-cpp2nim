@@ -68,11 +68,13 @@ proc generate_cpp_brackets*(template_symbols: seq[NimNode],
     ).join(",")
 
 proc generate_operator_call(op: string,
-  unary: bool = false): string {.noSideEffect.} =
-  if unary: op & "#"
+  nargs: int = 1): string {.noSideEffect.} =
+  assert(nargs in 1..3, "Number of arguments of operator must be in interval " &
+    "between 1 and 3, but $1 arguments found!" % $nargs)
+  if nargs == 1: op & "#"
   else:
     let i = (if op[0] in ['[', '(']: 1 else: op.len)
-    "#" & op[0..<i] & "#" & op[i..^1]
+    "#" & op[0..<i] & "#" & op[i..^1] & (if nargs > 2: "#" else: "")
     
 proc generate_proc_call*(state: State, procedure: NimNode): string =
   ## Generates string for importcpp pragma
@@ -85,7 +87,8 @@ proc generate_proc_call*(state: State, procedure: NimNode): string =
     else: procedure.name
   if namenode.kind == nnkAccQuoted:
     if namenode.len == 1: # Operator but not a destructor
-      return generate_operator_call($namenode[0], formals.len() < 3)
+      hint formals.treeRepr
+      return generate_operator_call($namenode[0], formals.len() - 1)
   let name = 
     if namenode.len > 1 and namenode[1].repr == "destroy": # Destructor
       "~" & state.class.cppname
@@ -178,11 +181,13 @@ when isMainModule:
     test(es.generate_proc_call(n"proc q()"), "q(@)")
     test(es.generate_proc_call(n"proc `+`(q: int, w: int)"), "#+#")
     test(es.generate_proc_call(n"proc `[]`(q: int, w: int)"), "#[#]")
+    test(es.generate_proc_call(n"proc `[]=`(q: int, w: int, u:int)"), "#[#]=#")
     test(es.generate_proc_call(n"proc q[T](w:T)"), "q<'1>(@)")
     test(ns.generate_proc_call(n"proc q[T](w:T)"),
       "std::q<'1>(@)")
     test(cs.generate_proc_call(n"proc q[T](w:T)"),
       "someclass::q<'1>(@)")
+    
     test(tcs.generate_proc_call(n"proc q[W](w:T, e:W): Y"),
       "_tclass<'1,'0>::q<'2>(@)")
       
@@ -196,6 +201,9 @@ when isMainModule:
     test(cs.generate_proc(n"proc q*[T](w: T)"),
       n"""proc q*[T](this: var someclass, w: T)
       {.importcpp:"someclass::q<'2>(@)", nodecl.}""")
+    test(cs.generate_proc(n"proc `[]=`(w: int, u:int)"), 
+      n"""proc `[]=`*(this: var someclass, w: int, u: int)
+      {.importcpp:"#[#]=#", nodecl.}""")
     test(cs.generate_proc(n"proc someclass[T](w: T)"),
       n"""proc newsomeclass*[T](w: T): someclass
       {.importcpp:"someclass::someclass<'1>(@)", nodecl, constructor.}""")
