@@ -1,6 +1,7 @@
 from state import State, source_declaration
 from cppclass import CppClass, newCppClass, declaration
 from native_proc import generate_proc, generate_proc_call
+from native_var import generate_var
 from strutils import `%`
 from sequtils import repeat, concat, toSeq, filter, map
 import macros
@@ -31,7 +32,7 @@ proc generate_type*(state: State, statements: NimNode = newStmtList()): NimNode 
   let class_fields = toSeq(statements.children())
     .filter(proc (i: NimNode): bool = 
       (i.kind == nnkCall or (i.kind == nnkInfix and $i[0] == "as")))
-    .map(proc (i:NimNode): NimNode = newTree(nnkIdentDefs)) # TODO: Call var parser
+    .map(proc (i:NimNode): NimNode = generate_var(state, i))
   let reclist = if class_fields.len > 0 : newTree(nnkRecList, class_fields)
     else: newEmptyNode()
   let emptyobject = newTree(nnkObjectTy, repeat(newEmptyNode(), 2).concat(@[reclist]))
