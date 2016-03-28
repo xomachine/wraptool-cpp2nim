@@ -1,5 +1,6 @@
 from state import State, source_declaration
 from cppclass import CppClass, newCppClass, declaration
+from native_proc import generate_proc, generate_proc_call
 from strutils import `%`
 from sequtils import repeat, concat
 import macros
@@ -40,6 +41,17 @@ proc generate_type*(state: State): NimNode =
     else: newEmptyNode()
   newTree(nnkTypeDef, pragmaexpr, generics, emptyobject)
 
+proc generate_basic_constructor*(state: State): NimNode =
+  ## Generates basic constructor for a class with name "new<ClassName>"
+  assert(state.class != nil, "Can not generate constructor without state.class!")
+  let constructor_declaration = parseExpr("""proc $1()""" % state.class.name)
+  generate_proc(state, constructor_declaration)
+  
+proc generate_destructor*(state: State): NimNode =
+  ## Generates destructor for a class with declaration destroy(this: ClassName)
+  assert(state.class != nil, "Can not generate constructor without state.class!")
+  generate_proc(state, parseExpr("""proc `=destroy`()"""))
+  
 when isMainModule:
   from test_tools import test
   from macros import parseExpr
@@ -54,3 +66,9 @@ when isMainModule:
     test(tcs.generate_type(),
       n"""type
         TemplateClass* {.importcpp:"_tclass<'0>", nodecl.} [T, V] = object"""[0])
+    test(scs.generate_basic_constructor(),
+      n"""proc newSomeClass*(): SomeClass
+      {.importcpp:"SomeClass::SomeClass(@)", nodecl, constructor.}""")
+    test(scs.generate_destructor(),
+      n"""proc `=destroy`*(this: var SomeClass)
+      {.importcpp:"SomeClass::~SomeClass(@)", nodecl, destructor.}""")
