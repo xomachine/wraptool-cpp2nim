@@ -104,9 +104,7 @@ macro wrapheader*(header: expr, imports: expr): expr =
   ## class annotation without parameters generates new type, default constructor and destructor for this type
   
   let state = newState(header, SourceType.header)
-  result = state.wrap(imports)
-  hint result.repr
-  #newEmptyNode()
+  state.wrap(imports)
 
 macro wrapdynlib*(lib: expr, imports: expr): expr =
   ## Wraps all supplied annotations as C++ stuff dynamicly loaded from file
