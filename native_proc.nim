@@ -123,7 +123,6 @@ proc generate_proc*(state: State, procedure: NimNode): NimNode =
   let is_constructor = (is_method and
     procedure.name.kind in [nnkIdent, nnkPostfix] and
     procedure.name.basename.lispRepr == ("Ident(!\"$1\")" % state.class.name))
-  let is_destructor = is_method and procedure.name.repr.startsWith("`= destroy`")
   # Name standartization
   let procname =
     if procedure.name.kind == nnkPostfix: procedure.name
@@ -162,11 +161,7 @@ proc generate_proc*(state: State, procedure: NimNode): NimNode =
     # generation
     result.pragma.add(newIdentNode("constructor"))
     result.name = newIdentNode("new$1" % state.class.name).postfix("*")
-  if is_destructor:
-    result.pragma.add(newIdentNode("destructor"))
-    
-  
-  
+
 
 ########################
 # Test area
