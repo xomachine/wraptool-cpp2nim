@@ -135,7 +135,7 @@ proc generate_proc*(state: State, procedure: NimNode): NimNode =
   # Inserting "this" into args to call proc as method
     result[3].insert(1, newTree(nnkIdentDefs,
       newIdentNode("this"),
-      newTree(nnkVarTy, state.class.declaration()),
+      state.class.declaration(),
       newEmptyNode()))
   # Pragmas generation
   if result.pragma.kind == nnkEmpty:
