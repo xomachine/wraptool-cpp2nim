@@ -38,7 +38,9 @@ proc wrap(state: State, expressions: NimNode): NimNode =
         let class_state = state.append(class = cppclass)
         types.add(class_state.generate_type(body))
         others.add(class_state.generate_basic_constructor())
-        others.add(class_state.generate_destructor())
+        # Should be added when destructors become stable
+        #others.add(parseExpr("{.experimental.}"))
+        #others.add(class_state.generate_destructor())
         let class_content = class_state.wrap(body)
         others.add(toSeq(class_content.children()))
       else:
