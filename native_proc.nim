@@ -92,21 +92,24 @@ proc generate_proc_call*(state: State, procedure: NimNode): string =
     if namenode.len > 1 and namenode[1].repr == "destroy": # Destructor
       "~" & state.class.cppname
     else: $namenode
+  let is_method = state.class != nil and state.class.name != name
+  let is_template_constructor = is_method and state.class.name == name and
+    state.class.template_args.len > 0
   let namespace_part = 
     if state.namespace != nil: state.namespace & "::"
     else: ""
   let class_part = 
-    if state.class != nil:
-      state.class.cppname & 
-        (if state.class.template_args.len() > 0: "<" &
-        state.class.template_args.generate_cpp_brackets(formals) &
-        ">" else: "") & "::"
-    else: ""
+    if is_method: (prefix: "#.", class: state.class.cppname & 
+      (if state.class.template_args.len() > 0: "<" &
+      state.class.template_args.generate_cpp_brackets(formals) &
+      ">" else: "") & "::")
+    else: ("", "")
   let generics_part =
-    if generics.kind == nnkGenericParams:
-      "<" & toSeq(generics.children()).generate_cpp_brackets(formals) & ">"
+    if generics.kind == nnkGenericParams or is_template_constructor:
+      "<" & toSeq(generics.children()).generate_cpp_brackets(formals) &
+      (if is_template_constructor: "'0" else: "") & ">"
     else: ""
-  namespace_part & class_part & name & generics_part & "(@)"
+  class_part.prefix & namespace_part & class_part.class & name & generics_part & "(@)"
   
 proc generate_proc*(state: State, procedure: NimNode): NimNode =
   ## Generates procedure import declaration for given procedure
