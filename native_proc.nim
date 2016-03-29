@@ -1,6 +1,6 @@
 import macros
 from strutils import `%`, join, endsWith, startsWith
-from sequtils import map, toSeq, concat, repeat, delete
+from sequtils import map, toSeq, concat, repeat, filter
 from cppclass import CppClass, declaration, newCppClass
 from state import State, source_declaration
 
@@ -145,6 +145,18 @@ proc generate_proc*(state: State, procedure: NimNode): NimNode =
     newIdentNode("importcpp"),
     newStrLitNode(state.generate_proc_call(result))))
   result.pragma.add(state.source_declaration)
+  if is_method and state.class.template_args.len > 0:
+    if result[2].kind != nnkGenericParams:
+      result[2] = newNimNode(nnkGenericParams)
+    let tail = state.class.template_args.concat(newEmptyNode().repeat(2))
+    if result[2].len > 0 and
+      result[2].last.len > 2 and
+      result[2].last[^2].kind == nnkEmpty and
+      result[2].last[^1].kind == nnkEmpty:
+      result[2][^1] = newTree(nnkIdentDefs,
+        toSeq(result[2].last)[0..^2].concat(tail))
+    else:
+      result[2].add(newTree(nnkIdentDefs, tail))
   if is_constructor:
     # Latest name changing to avoid affecting pragma
     # generation
@@ -210,5 +222,5 @@ when isMainModule:
       n"""proc newsomeclass*[T](w: T): someclass
       {.importcpp:"someclass<'1>(@)", nodecl, constructor.}""")
     test(tcs.generate_proc(n"proc q[G](w: G, e: T): seq[Y]"),
-      n"""proc q*[G](this: var tclass[T, Y], w: G, e: T): seq[Y]
+      n"""proc q*[G, T, Y](this: var tclass[T, Y], w: G, e: T): seq[Y]
       {.importcpp:"#._tclass<'*1,'*0>::q<'2>(@)", nodecl.}""")
