@@ -3,12 +3,12 @@ from macros import error, newIdentNode, newStrLitNode, newTree
 from macros import nnkExprColonExpr
 
 type
-  SourceType = enum
+  SourceType* {.pure.} = enum
     none, dynlib, header
   WrapSource = object
     case kind: SourceType
-    of none: discard
-    of dynlib, header:
+    of SourceType.none: discard
+    of SourceType.dynlib, SourceType.header:
       file*: string
   
   State* = object
@@ -16,6 +16,11 @@ type
     class*: CppClass
     source: WrapSource
 
+proc newState*(source: string = "",
+  source_type: SourceType = SourceType.none): State = 
+  if source_type == SourceType.none: State()
+  else: State(source: WrapSource(kind: source_type, file: source))
+    
 proc append*(self: State, namespace: string = nil,
   class: CppClass = nil): State =
   result = self
@@ -31,8 +36,8 @@ proc append*(self: State, namespace: string = nil,
 
 proc source_declaration*(self: State): NimNode =
   case self.source.kind
-  of none: newIdentNode("nodecl")
-  of dynlib, header:
+  of SourceType.none: newIdentNode("nodecl")
+  of SourceType.dynlib, SourceType.header:
     newTree(nnkExprColonExpr,
       newIdentNode($self.source.kind),
       newStrLitNode(self.source.file))
