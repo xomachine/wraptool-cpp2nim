@@ -11,7 +11,10 @@ proc generate_var_pragma(state: State, cppname: string): NimNode =
   let importcpp = newTree(nnkExprColonExpr,
     newIdentNode("importcpp"),
     newStrLitNode(namespace_prefix & cppname))
-  newTree(nnkPragma, importcpp, state.source_declaration)
+  if state.class == nil:
+    newTree(nnkPragma, importcpp, state.source_declaration)
+  else:
+    newTree(nnkPragma, importcpp)
 
 proc generate_var*(state: State, declaration: NimNode): NimNode =
   let varinfo = case declaration.kind
@@ -43,16 +46,19 @@ proc generate_var*(state: State, declaration: NimNode): NimNode =
   
   let pragma = newTree(nnkPragmaExpr,
     newIdentNode(varinfo.nimname).postfix("*"),
-    (if state.class == nil:
-      state.generate_var_pragma(varinfo.cppname) else: newEmptyNode()))
+    state.generate_var_pragma(varinfo.cppname))
   newTree(nnkIdentDefs, pragma, newIdentNode(varinfo.typename), newEmptyNode())
 
   
 when isMainModule:
   from test_tools import test
+  from cppclass import newCppClass
   proc n(e: string): NimNode {.compileTime.} = parseExpr(e)
   
   static:
     let es = State()
+    let cs = State(class: newCppClass(n"""someclass"""))
     test(es.generate_var(n"""simplevar: int"""),
       n"""var simplevar*{.importcpp:"simplevar", nodecl.}: int"""[0])
+    test(cs.generate_var(n"""simplefield: int"""),
+      n"""var simplefield*{.importcpp:"simplefield".}: int"""[0])
