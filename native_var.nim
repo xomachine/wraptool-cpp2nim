@@ -40,9 +40,11 @@ proc generate_var*(state: State, declaration: NimNode): NimNode =
     else:
       error("Unknown NimNode: " & declaration.treeRepr)
       ("", "", "")
+  
   let pragma = newTree(nnkPragmaExpr,
     newIdentNode(varinfo.nimname).postfix("*"),
-    state.generate_var_pragma(varinfo.cppname))
+    (if state.class == nil:
+      state.generate_var_pragma(varinfo.cppname) else: newEmptyNode()))
   newTree(nnkIdentDefs, pragma, newIdentNode(varinfo.typename), newEmptyNode())
 
   
@@ -52,6 +54,5 @@ when isMainModule:
   
   static:
     let es = State()
-    
     test(es.generate_var(n"""simplevar: int"""),
       n"""var simplevar*{.importcpp:"simplevar", nodecl.}: int"""[0])
