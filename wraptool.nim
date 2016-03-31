@@ -1,6 +1,6 @@
 import macros
 from strutils import `%`, startsWith
-from sequtils import toSeq
+from sequtils import toSeq, map
 from native_proc import generate_proc
 from native_type import generate_type, generate_basic_constructor, generate_destructor
 from native_var import generate_var
@@ -49,12 +49,31 @@ proc wrap(state: State, expressions: NimNode): NimNode =
       others.add(state.generate_proc(expression))
     of nnkCall, nnkInfix:
       if dynlib:
-        error("Constants and global variables cannot be imported" &
+        error("Global variables cannot be imported" &
           " without header: $1 $2" %
           [$expression, expression.lineinfo()])
       if inside_class: continue # Class fields already handled by generate_type
       let value_declaration = state.generate_var(expression)
       others.add(newTree(nnkVarSection, value_declaration))
+    of nnkStaticStmt:
+      assert(expression.len == 1, "Incorrect constant value declaration at $1" %
+          expression.lineinfo())
+      expression[0].expectKind(nnkStmtList)
+      others.add toSeq(expression[0].children())
+        .map(proc (x: NimNode): NimNode = state.generate_var(x))
+        .map(proc (x: NimNode): NimNode =
+          var vs = x
+          let originame = $x[0][0].basename
+          let newname = originame & "_v"
+          let ls = newTree(nnkIdentDefs,
+            newIdentNode(originame).postfix("*"),
+            newEmptyNode(),
+            newIdentNode(newname))
+          vs[0][0] = newIdentNode(newname)
+          newTree(nnkStmtList,
+            newTree(nnkVarSection, vs),
+            newTree(nnkLetSection, ls))
+          )
     else:
       error("Expression not supported in wrapper.$1 \n $2" %
             [expression.treeRepr(), expression.lineinfo()])
@@ -88,8 +107,10 @@ macro wrapheader*(header: expr, imports: expr): expr =
   ##   # http://nim-lang.org/docs/manual.html#importcpp-pragma-wrapping-destructors
   ##     ...
   ##   wrapheader "<foo.h>":
-  ##     FOO_CONSTANT: cint             # constants can be wrapped
-  ##     "__BarConst" as BAR_CONST:cint # and renamed if nessesary
+  ##     FOO_VAR: cint                # global variables can be wrapped
+  ##     "__foo_var" as FooVar:cint   # and renamed if nessesary
+  ##     static:                      # constants supported as well
+  ##        FOO_CONST: cint           # through "static:" notation
   ##     class Bar[T]: # namespace can be ommited as well as C++ name
   ##                   # if in C++ class has the same name with Nims one
   ##                   # actually class can be a template
