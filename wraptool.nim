@@ -102,9 +102,9 @@ macro wrapheader*(header: expr, imports: expr): expr =
   ##   var cppstr = newCppString("str") # constructors have names
   ##                                    # compilled from "new" word and class name in Nim
   ##   echo(cppstr.c_str())  # method can be called by familiar way
-  ##   lc.destroyCppString() # destructors have names compiled from "destroy" word and class name in Nim
   ##   # Destructors usage is unnesessary according to Nim manual
   ##   # http://nim-lang.org/docs/manual.html#importcpp-pragma-wrapping-destructors
+  ##   # But it will be added when `=destroy` notation become stable
   ##     ...
   ##   wrapheader "<foo.h>":
   ##     FOO_VAR: cint                # global variables can be wrapped
