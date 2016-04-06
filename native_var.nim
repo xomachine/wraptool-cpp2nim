@@ -16,33 +16,37 @@ proc generate_var_pragma(state: State, cppname: string): NimNode =
   else:
     newTree(nnkPragma, importcpp)
 
+proc get_var_info*(declaration: NimNode):
+  tuple[cppname: string, nimname: string, typename: string] =
+  case declaration.kind
+  of nnkInfix:
+    assert(declaration.len == 4, "Broken infix: " & declaration.treeRepr)
+    declaration[0].expectKind(nnkIdent)
+    declaration[2].expectKind(nnkIdent)
+    declaration[1].expectKind(nnkStrLit)
+    declaration[3].expectKind(nnkStmtList)
+    assert($declaration[0] == "as", """Only "<cppname>" as <nimname> """ &
+      """declarations allowed, not """ & declaration.repr)
+    assert(declaration[3].len == 1, "Broken declaration: " & declaration.repr)
+    let cppname = $declaration[1]
+    let nimname = $declaration[2]
+    let typename = $declaration[3][0]
+    (cppname: cppname, nimname: nimname, typename: typename)
+  of nnkCall:
+    assert(declaration.len == 2, "Broken declaration: " & declaration.repr)
+    declaration[0].expectKind(nnkIdent)
+    declaration[1].expectKind(nnkStmtList)
+    assert(declaration[1].len == 1, "Broken declaration: " & declaration.repr)
+    let cppname = $declaration[0]
+    let nimname = $declaration[0]
+    let typename = $declaration[1][0]
+    (cppname: cppname, nimname: nimname, typename: typename)
+  else:
+    error("Unknown NimNode: " & declaration.treeRepr)
+    ("", "", "")
+
 proc generate_var*(state: State, declaration: NimNode): NimNode =
-  let varinfo = case declaration.kind
-    of nnkInfix:
-      assert(declaration.len == 4, "Broken infix: " & declaration.treeRepr)
-      declaration[0].expectKind(nnkIdent)
-      declaration[2].expectKind(nnkIdent)
-      declaration[1].expectKind(nnkStrLit)
-      declaration[3].expectKind(nnkStmtList)
-      assert($declaration[0] == "as", """Only "<cppname>" as <nimname> """ &
-        """declarations allowed, not """ & declaration.repr)
-      assert(declaration[3].len == 1, "Broken declaration: " & declaration.repr)
-      let cppname = $declaration[1]
-      let nimname = $declaration[2]
-      let typename = $declaration[3][0]
-      (cppname: cppname, nimname: nimname, typename: typename)
-    of nnkCall:
-      assert(declaration.len == 2, "Broken declaration: " & declaration.repr)
-      declaration[0].expectKind(nnkIdent)
-      declaration[1].expectKind(nnkStmtList)
-      assert(declaration[1].len == 1, "Broken declaration: " & declaration.repr)
-      let cppname = $declaration[0]
-      let nimname = $declaration[0]
-      let typename = $declaration[1][0]
-      (cppname: cppname, nimname: nimname, typename: typename)
-    else:
-      error("Unknown NimNode: " & declaration.treeRepr)
-      ("", "", "")
+  let varinfo = get_var_info(declaration)
   
   let pragma = newTree(nnkPragmaExpr,
     newIdentNode(varinfo.nimname).postfix("*"),
