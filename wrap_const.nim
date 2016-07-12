@@ -15,6 +15,8 @@ extern "C" {
 }"""
 
 proc generate_consts*(state: State, consts: NimNode): tuple[nim: NimNode, cpp: string] =
+  ## The procedure generates constants requester in wrapper file, then
+  ## makes requester call and sets all the constants via `let`
   consts.expectKind(nnkStmtList)
   var cassigns = newSeq[string](0)
   var cdecls = newSeq[string](0)
@@ -43,8 +45,8 @@ proc generate_consts*(state: State, consts: NimNode): tuple[nim: NimNode, cpp: s
   result.nim = newTree(nnkStmtList, typedecl, getter_decl, get_consts)
   result.nim.add(assignments)
   result.cpp = cppsource_tempate % [cdecls.join(";\n"), cassigns.join(";\n")]
-  
-  
+
+
 when isMainModule:
   macro checkme(data: expr): expr =
     result = newEmptyNode()

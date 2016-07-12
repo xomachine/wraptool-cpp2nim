@@ -4,6 +4,7 @@ import macros
 ## Vars, consts and other imported values handler
 
 proc generate_var_pragma(state: State, cppname: string): NimNode =
+  ## Generates pragma for var with `cppname`
   let namespace_prefix =
     if state.namespace != nil and state.class == nil:
       state.namespace & "::"
@@ -18,6 +19,7 @@ proc generate_var_pragma(state: State, cppname: string): NimNode =
 
 proc get_var_info*(declaration: NimNode):
   tuple[cppname: string, nimname: string, typename: string] =
+  ## Parses Nim declaration of variable in pseudo language
   case declaration.kind
   of nnkInfix:
     assert(declaration.len == 4, "Broken infix: " & declaration.treeRepr)
@@ -46,19 +48,20 @@ proc get_var_info*(declaration: NimNode):
     ("", "", "")
 
 proc generate_var*(state: State, declaration: NimNode): NimNode =
+  ## Makes the variable declaration
   let varinfo = get_var_info(declaration)
-  
+
   let pragma = newTree(nnkPragmaExpr,
     newIdentNode(varinfo.nimname).postfix("*"),
     state.generate_var_pragma(varinfo.cppname))
   newTree(nnkIdentDefs, pragma, newIdentNode(varinfo.typename), newEmptyNode())
 
-  
+
 when isMainModule:
   from test_tools import test
   from cppclass import newCppClass
   proc n(e: string): NimNode {.compileTime.} = parseExpr(e)
-  
+
   static:
     let es = State()
     let cs = State(class: newCppClass(n"""someclass"""))

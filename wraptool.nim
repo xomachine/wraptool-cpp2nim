@@ -9,6 +9,11 @@ from cppclass import newCppClass
 
 
 proc wrap(state: State, expressions: NimNode): NimNode =
+  ## General AST parser procedure.
+  ## Can be called recursively from itself.
+  ## `state` contains information about current namespace, class, etc
+  ## from where this procedure called.
+  ## `expressions` contains AST of wrapping structure members list.
   let inside_class = state.class != nil
   let dynlib = not state.source_declaration.repr.startsWith("header")
   var types = newNimNode(nnkStmtList)
@@ -77,7 +82,7 @@ proc wrap(state: State, expressions: NimNode): NimNode =
     else:
       error("Expression not supported in wrapper.$1 \n $2" %
             [expression.treeRepr(), expression.lineinfo()])
-    
+
     result = newNimNode(nnkStmtList)
     if types.len > 0:
       result.add(newTree(nnkTypeSection, toSeq(types.children())))
@@ -125,7 +130,7 @@ macro wrapheader*(header: expr, imports: expr): expr =
   ##    assert(type(bar.some_method()) is string)  # either methods
   ##
   ## class annotation without parameters generates new type, default constructor and destructor for this type
-  
+
   let state = newState(header, SourceType.header)
   state.wrap(imports)
 

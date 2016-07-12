@@ -15,7 +15,7 @@ proc generate_cpp_brackets*(template_symbol: string,
   ## .. code-block:: nim
   ## proc tproc[template_symbol](arg: tempate_symbol)
   ##
-  ## 
+  ##
   case args.kind
   of nnkIdent:
     if $args == template_symbol:
@@ -50,6 +50,7 @@ Arguments tree:\n $2""" %
 
 proc generate_cpp_brackets*(template_symbols: seq[NimNode],
   args: NimNode): string =
+  ## Generates brackets for multiple template parameters
   template_symbols.map(
     proc(x: NimNode): string =
       case x.kind
@@ -69,13 +70,15 @@ proc generate_cpp_brackets*(template_symbols: seq[NimNode],
 
 proc generate_operator_call(op: string,
   nargs: int = 1): string {.noSideEffect.} =
+  ## Generates call of operator for {.importcpp.} pragma
+  ## supports binary and unary operators
   assert(nargs in 1..3, "Number of arguments of operator must be in interval " &
     "between 1 and 3, but $1 arguments found!" % $nargs)
   if nargs == 1: op & "#"
   else:
     let i = (if op[0] in ['[', '(']: 1 else: op.len)
     "#" & op[0..<i] & "#" & op[i..^1] & (if nargs > 2: "#" else: "")
-    
+
 proc generate_proc_call*(state: State, procedure: NimNode): string =
   ## Generates string for importcpp pragma
   procedure.expectKind(nnkProcDef)
@@ -88,35 +91,38 @@ proc generate_proc_call*(state: State, procedure: NimNode): string =
   if namenode.kind == nnkAccQuoted:
     if namenode.len == 1: # Operator but not a destructor
       return generate_operator_call($namenode[0], formals.len() - 1)
-  let name = 
-    if namenode.len > 1 and namenode[1].repr == "destroy": # Destructor
-      "~" & state.class.cppname
-    else: $namenode
-  let is_method = state.class != nil and state.class.name != name
-  let is_template_constructor = is_method and state.class.name == name and
-    state.class.template_args.len > 0
-  let namespace_part = 
+    #else: # Destructor not implemented
+    #  return "delete #"
+  let is_class_member = state.class != nil
+  let is_constructor = is_class_member and state.class.name == $namenode
+  let is_method = is_class_member and not is_constructor
+  let is_template_class = is_class_member and state.class.template_args.len > 0
+  let name =
+    if is_constructor:
+      state.class.cppname
+    else:
+      $namenode
+  let namespace_part =
     if state.namespace != nil: state.namespace & "::"
     else: ""
-  let class_part = 
-    if is_method: (prefix: "#.", class: state.class.cppname & 
-      (if state.class.template_args.len() > 0: "<" &
+  let class_part =
+    if is_class_member: (prefix: (if is_method : "#." else: ""), class: state.class.cppname &
+      (if is_template_class: "<" &
       state.class.template_args.generate_cpp_brackets(formals) &
       ">" else: "") & "::")
     else: ("", "")
   let generics_part =
-    if generics.kind == nnkGenericParams or is_template_constructor:
-      "<" & toSeq(generics.children()).generate_cpp_brackets(formals) &
-      (if is_template_constructor: "'0" else: "") & ">"
+    if generics.kind == nnkGenericParams:
+      "<" & toSeq(generics.children()).generate_cpp_brackets(formals) & ">"
     else: ""
   class_part.prefix & namespace_part & class_part.class & name & generics_part & "(@)"
-  
+
 proc generate_proc*(state: State, procedure: NimNode): NimNode =
   ## Generates procedure import declaration for given procedure
   ## This proc adds necessary pragmas and transform procedure
   ## arguments and template parameters to use it with declared type/class
   ## If procedure name has the same name with class it will be considered
-  ## as constructor and replaced by "proc new[T: <classname>](<params>):T"
+  ## as constructor and replaced by "proc new<classname>(<params>):T"
   ## or similiar proc
   procedure.expectKind(nnkProcDef)
   let is_method = (state.class != nil)
@@ -163,13 +169,13 @@ proc generate_proc*(state: State, procedure: NimNode): NimNode =
     result.name = newIdentNode("new$1" % state.class.name).postfix("*")
 
 
-########################
+#-----------------------
 # Test area
-########################
-when isMainModule:   
+#-----------------------
+when isMainModule:
   from test_tools import test
   proc n(x: string): NimNode {.compileTime.} = parseExpr(x)
-  
+
   static:
     # generate_cpp_brackets test
     test(@[n"T"].generate_cpp_brackets(n"proc q(w: T)"[3]), "'1")
@@ -178,7 +184,7 @@ when isMainModule:
     test(@[n"T", n"U"]
       .generate_cpp_brackets(n"proc q(w: seq[T], g:U)"[3]),
       "'*1,'2")
-  
+
     # Test data
     let es = State()
     let ns = State(namespace: "std")
@@ -196,10 +202,10 @@ when isMainModule:
       "std::q<'1>(@)")
     test(cs.generate_proc_call(n"proc q[T](w:T)"),
       "#.someclass::q<'1>(@)")
-    
+
     test(tcs.generate_proc_call(n"proc q[W](w:T, e:W): Y"),
       "#._tclass<'1,'0>::q<'2>(@)")
-      
+
     # generate_proc test
     test(es.generate_proc(n"proc q()"),
       n"""proc q*() {.importcpp:"q(@)", nodecl.}""")
@@ -208,14 +214,19 @@ when isMainModule:
     test(es.generate_proc(n"proc q[T](w: T)"),
       n"""proc q*[T](w: T) {.importcpp:"q<'1>(@)", nodecl.}""")
     test(cs.generate_proc(n"proc q*[T](w: T)"),
-      n"""proc q*[T](this: var someclass, w: T)
+      n"""proc q*[T](this: someclass, w: T)
       {.importcpp:"#.someclass::q<'2>(@)", nodecl.}""")
-    test(cs.generate_proc(n"proc `[]=`(w: int, u:int)"), 
-      n"""proc `[]=`*(this: var someclass, w: int, u: int)
+    test(cs.generate_proc(n"proc `[]=`(w: int, u:int)"),
+      n"""proc `[]=`*(this: someclass, w: int, u: int)
       {.importcpp:"#[#]=#", nodecl.}""")
+    test(tcs.generate_proc(n"proc q[G](w: G, e: T): seq[Y]"),
+      n"""proc q*[G, T, Y](this: tclass[T, Y], w: G, e: T): seq[Y]
+      {.importcpp:"#._tclass<'*1,'*0>::q<'2>(@)", nodecl.}""")
+    # constructor test
     test(cs.generate_proc(n"proc someclass[T](w: T)"),
       n"""proc newsomeclass*[T](w: T): someclass
-      {.importcpp:"someclass<'1>(@)", nodecl, constructor.}""")
-    test(tcs.generate_proc(n"proc q[G](w: G, e: T): seq[Y]"),
-      n"""proc q*[G, T, Y](this: var tclass[T, Y], w: G, e: T): seq[Y]
-      {.importcpp:"#._tclass<'*1,'*0>::q<'2>(@)", nodecl.}""")
+      {.importcpp:"someclass::someclass<'1>(@)", nodecl, constructor.}""")
+    # destructor test
+    #test(cs.generate_proc(n"proc `=destroy`()"),
+    #  n"""proc `=destroy`*(this: ptr someclass)
+    #  {.importcpp:"delete #", nodecl.}""")

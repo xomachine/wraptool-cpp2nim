@@ -3,11 +3,13 @@ from sequtils import toSeq
 
 type
   CppClass* = ref object
+    ## Information about class in C++
     cppname*: string
     name*: string
     template_args*: seq[NimNode]
 
 proc newCppClass*(declaration: NimNode): CppClass =
+  ## Creates new CppClass from Nim declaration in pseudo language
   case declaration.kind
   of nnkBracketExpr:
     assert(declaration.len() > 1,
@@ -33,6 +35,7 @@ proc newCppClass*(declaration: NimNode): CppClass =
     error("Unknown node passed as type declaration: " & declaration.treeRepr)
 
 proc declaration*(self: CppClass): NimNode =
+  ## Generates declaration to use in procedure argument list
   if self.template_args.len() > 0:
     result = newTree(nnkBracketExpr, newIdentNode(self.name))
     for arg in self.template_args:

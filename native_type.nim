@@ -54,12 +54,12 @@ proc generate_basic_constructor*(state: State): NimNode =
   assert(state.class != nil, "Can not generate constructor without state.class!")
   let constructor_declaration = parseExpr("""proc $1()""" % state.class.name)
   generate_proc(state, constructor_declaration)
-  
+
 proc generate_destructor*(state: State): NimNode =
   ## Generates destructor for a class with declaration destroy(this: ClassName)
-  assert(state.class != nil, "Can not generate constructor without state.class!")
+  assert(state.class != nil, "Can not generate destructor without state.class!")
   generate_proc(state, parseExpr("""proc `=destroy`()"""))
-  
+
 when isMainModule:
   from test_tools import test
   from macros import parseExpr
