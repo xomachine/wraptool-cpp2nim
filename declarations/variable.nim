@@ -10,10 +10,6 @@ type
     cppname: string
 
 
-## Vars, consts and other imported values handler
-
-
-
 proc newVariable*(declaration: NimNode, namespace: string = ""): Variable =
   ## Parses given NimNode with variable declaration in pseudo-Nim language
   ## and creates new Variable object
@@ -43,8 +39,8 @@ proc newVariable*(declaration: NimNode, namespace: string = ""): Variable =
     error("Unknown NimNode: " & declaration.treeRepr)
     result.namespace = namespace
 
-when declared(cpp):
-  proc generate_var_pragma(self: Variable): NimNode =
+when defined(cpp):
+  proc generate_var_pragma(self: Variable): NimNode {.compileTime.} =
     let namespace_prefix =
       if self.namespace.len > 0:
         self.namespace & "::"
@@ -56,8 +52,8 @@ when declared(cpp):
 else:
   {.fatal: "Not implemented yet".}
 
-proc generate_declaration*(self: Variable): NimNode =
+proc generate_declaration*(self: Variable): NimNode {.compileTime.} =
   let pragma = newTree(nnkPragmaExpr,
     newIdentNode(self.name).postfix("*"),
-    state.generate_var_pragma(self.cppname))
+    self.generate_var_pragma())
   newTree(nnkIdentDefs, pragma, newIdentNode(self.typename), newEmptyNode())

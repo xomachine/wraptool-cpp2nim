@@ -1,6 +1,6 @@
 
 import macros
-from sequtils import toSeq
+from sequtils import toSeq, filter, map, repeat, concat
 from declarations.variable import newVariable, generate_declaration
 
 type
@@ -48,12 +48,12 @@ proc declaration_for_arglist*(self: Class): NimNode =
       result.add(arg)
   else: result = newIdentNode(self.name)
 
-when declared(cpp):
+when defined(cpp):
   proc generate_type_pragma(self: Class): NimNode =
     ## Generates "importcpp" pragma
     ## for type declaration
     let namespace_prefix =
-      if self.namespace.len > 0 : state.namespace & "::"
+      if self.namespace.len > 0 : self.namespace & "::"
       else: ""
     let template_params =
       if self.template_args.len > 0: "<'0>"
@@ -62,15 +62,15 @@ when declared(cpp):
     let importcpp = newTree(nnkExprColonExpr,
       newIdentNode("importcpp"),
       newStrLitNode(import_string))
-    newTree(nnkPragma, importcpp, state.source_declaration)
+    newTree(nnkPragma, importcpp )#TODO state.sourcedeclaration alternative)
 
   proc generate_type_declaration*(self: Class, fields: NimNode = newStmtList()): NimNode =
     ## Generates type declaration for current class
     ## Returned declaration must be placed into TypeSection node
     ## Given state must include class field with current CppClass
     ## `fields` - class fields to place into declaration
-    statements.expectKind(nnkStmtList)
-    let class_fields = toSeq(statements.children())
+    fields.expectKind(nnkStmtList)
+    let class_fields = toSeq(fields.children())
       .filter(proc (i: NimNode): bool =
         (i.kind == nnkCall or (i.kind == nnkInfix and $i[0] == "as")))
       .map(proc (i:NimNode): NimNode = newVariable(i).generate_declaration())
