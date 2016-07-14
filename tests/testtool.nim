@@ -4,47 +4,47 @@ from terminal import resetAttributes, ForegroundColor, eraseLine
 from strutils import `%`
 
 type
-  Status {.pure.} = enum
+  Status* {.pure.} = enum
     ok, failed, fatal, unknown
 
-static:
-  var teststatus: Status
-  var errors: int
-  var oks: int
+  TestFailed = object of Exception
+  TestCrushed = object of Exception
+
+
+
+
 
 proc colored_echo(text: string, color: ForegroundColor) {.compileTime.} =
   #setForegroundColor(color)
   echo text
   #resetAttributes()
 
-proc check*(cond: bool){.compileTime.} =
-  if cond:
-    teststatus = Status.ok
-  else:
-    teststatus = Status.failed
 
-proc require*(cond: bool){.compileTime.} =
-  if cond:
-    teststatus = Status.ok
-  else:
-    teststatus = Status.fatal
+template internal_suite(name: string, code: untyped) {.dirty.} =
+  var errors: int = 0
+  var oks: int = 0
+  var teststatus: Status
+  echo "Started test suite " & name
+  (code)
+  echo "Test suite " & name & " completed with " & $errors &
+    " failed and " & $oks & " successful tasks"
 
 template suite*(name: string, code: untyped) =
-  echo "Started test suite $1" % name
-  errors = 0
-  oks = 0
-  (code)
-  echo "Test suite $1 completed with $2 failed and $3 successful tasks" %
-    [name, $errors, $oks]
+  internal_suite(name):
+    (code)
 
+template test*(name: string, code: untyped)  =
 
-template test*(name: string, code: untyped) =
-  let notification = "Testing $1 ..." % name
-  echo notification
+  echo "Testing $1 ..." % name
   #cursorUp()
   #cursorForward(notification.len)
   teststatus = Status.unknown
-  (code)
+  try:
+    (code)
+  except TestFailed:
+    teststatus = Status.failed
+  except TestCrushed:
+    teststatus = Status.fatal
   case teststatus
   of Status.ok:
     colored_echo("[  OK  ]", fgGreen)
@@ -59,6 +59,17 @@ template test*(name: string, code: untyped) =
     #eraseLine()
     warning("""You have not written test for $1!
 Consider adding "check" or "require" procedure under test statement""" % name)
+
+
+template check*(cond: bool) =
+  teststatus = Status.ok
+  if not cond:
+    raise newException(TestFailed, "")
+
+template require*(cond: bool) =
+  teststatus = Status.ok
+  if not cond:
+    raise newException(TestCrushed, "")
 
 when isMainModule:
   static:
