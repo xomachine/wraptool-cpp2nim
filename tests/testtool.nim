@@ -60,14 +60,14 @@ template test*(name: string, code: untyped) =
     warning("""You have not written test for $1!
 Consider adding "check" or "require" procedure under test statement""" % name)
 
-
-static:
-  suite "TestTool":
-    test "test template":
-      assert(true)
-    test "check":
-      check(true)
-    test "false check":
-      check(false)
-    test "require":
-      require(true)
+when isMainModule:
+  static:
+    suite "TestTool":
+      test "test template":
+        assert(true)
+      test "check":
+        check(true)
+      test "false check":
+        check(false)
+      test "require":
+        require(true)
