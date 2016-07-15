@@ -24,14 +24,15 @@ template internal_suite(name: string, code: untyped) {.dirty.} =
   var errors: int = 0
   var oks: int = 0
   var teststatus: Status
-  echo "Started test suite " & name
+  echo "Started test suite \"" & name & "\""
   (code)
-  echo "Test suite " & name & " completed with " & $errors &
+  echo "Test suite \"" & name & "\" completed with " & $errors &
     " failed and " & $oks & " successful tasks"
 
 template suite*(name: string, code: untyped) =
-  internal_suite(name):
-    (code)
+  block:
+    internal_suite(name):
+      (code)
 
 template test*(name: string, code: untyped)  =
 
@@ -74,11 +75,11 @@ template require*(cond: bool) =
 when isMainModule:
   static:
     suite "TestTool":
-      test "test template":
+      test "abscence of \"check\" or \"require\". This test should throw warning":
         assert(true)
-      test "check":
+      test "checking mechanism":
         check(true)
-      test "false check":
+      test "check failure. This test should fail":
         check(false)
-      test "require":
+      test "require mechanism":
         require(true)
