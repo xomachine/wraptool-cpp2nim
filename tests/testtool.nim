@@ -1,6 +1,5 @@
 import macros
-#from terminal import cursorUp, cursorForward, setForegroundColor
-from terminal import resetAttributes, ForegroundColor, eraseLine
+from terminal import ForegroundColor
 from strutils import `%`
 
 type
@@ -8,13 +7,25 @@ type
   TestCrushed = object of Exception
 
 
+# Terminal managing code (linux only)
+when not defined(windows):
+  const resetAttributes = "\e[0m"
+  proc cursorUp(lines: int = 1): string =
+    "\e[" & $lines & 'A'
+  proc colorize(color: ForegroundColor, bright: bool = false): string =
+    "\e[" & $(ord(color) + (if bright: 60 else: 0)) & 'm'
+else:
+  const resetAttributes = ""
+  proc cursorUp(lines: int = 1): string =
+    ""
+  proc colorize(color: ForegroundColor, bright: bool = false): string =
+    ""
+
+proc colored_echo(text: string, color: ForegroundColor,
+  bright: bool = false) {.compileTime.} =
+  echo cursorUp() & colorize(color, bright) & text & resetAttributes
 
 
-
-proc colored_echo(text: string, color: ForegroundColor) {.compileTime.} =
-  #setForegroundColor(color)
-  echo text
-  #resetAttributes()
 
 
 template internal_suite(name: string, code: untyped) {.dirty.} =
@@ -23,19 +34,21 @@ template internal_suite(name: string, code: untyped) {.dirty.} =
   var is_checked: bool
   echo "Started test suite \"" & name & "\""
   (code)
-  echo "Test suite \"" & name & "\" completed with " & $errors &
-    " failed and " & $oks & " successful tasks"
+
 
 template suite*(name: string, code: untyped) =
   block:
     internal_suite(name):
       (code)
+    echo "Completed with " &
+      colorize(fgYellow, true) &
+      $errors & resetAttributes &
+      " failed and " & colorize(fgGreen, true) & $oks &
+      resetAttributes & " successful tasks"
 
 template test*(name: string, code: untyped)  =
 
   echo "Testing $1 ..." % name
-  #cursorUp()
-  #cursorForward(notification.len)
   is_checked = false
   try:
     (code)
@@ -47,11 +60,11 @@ template test*(name: string, code: untyped)  =
       warning("""You have not written test for $1!
 Consider adding "check" or "require" procedure under test statement""" % name)
   except TestFailed:
-    colored_echo("[ FAIL ]", fgYellow)
+    colored_echo("[ FAIL ]", fgYellow, true)
     errors.inc
     echo getCurrentExceptionMsg()
   except TestCrushed:
-    colored_echo("[ FAIL ]", fgRed)
+    colored_echo("[ FAIL ]", fgRed, true)
     echo getCurrentExceptionMsg()
     error("Failed to complete tests due to critical test failure!")
 
