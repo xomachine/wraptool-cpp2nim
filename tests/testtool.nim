@@ -3,8 +3,9 @@ from terminal import ForegroundColor
 from strutils import `%`
 
 type
-  TestFailed = object of Exception
-  TestCrushed = object of Exception
+  TestFailed = object of AssertionError
+  TestCrushed = object of AssertionError
+  CriticalTestFailed = object of AssertionError
 
 
 # Terminal managing code (linux only)
@@ -22,7 +23,7 @@ else:
     ""
 
 proc colored_echo(text: string, color: ForegroundColor,
-  bright: bool = false) {.compileTime.} =
+  bright: bool = false) =
   echo cursorUp() & colorize(color, bright) & text & resetAttributes
 
 
@@ -47,26 +48,25 @@ template suite*(name: string, code: untyped) =
       resetAttributes & " successful tasks"
 
 template test*(name: string, code: untyped)  =
-
-  echo "Testing $1 ..." % name
+  echo "Testing:   $1 ..." % name
   is_checked = false
   try:
     (code)
     if is_checked:
-      colored_echo("[  OK  ]", fgGreen)
+      colored_echo("[   OK   ]", fgGreen)
       oks.inc
     else:
-      #eraseLine()
-      warning("""You have not written test for $1!
-Consider adding "check" or "require" procedure under test statement""" % name)
+      echo(colorize(fgYellow, true) & ("You have not written test for $1!" % name) &
+        "Consider adding \"check\" or \"require\" procedure under test statement" &
+        resetAttributes)
   except TestFailed:
-    colored_echo("[ FAIL ]", fgYellow, true)
+    colored_echo("[  FAIL  ]", fgYellow, true)
     errors.inc
-    echo getCurrentExceptionMsg()
+    echo instantiationInfo().repr & ": " & getCurrentExceptionMsg()
   except TestCrushed:
-    colored_echo("[ FAIL ]", fgRed, true)
-    echo getCurrentExceptionMsg()
-    error("Failed to complete tests due to critical test failure!")
+    colored_echo("[CRITICAL]", fgRed, true)
+    echo instantiationInfo().repr & ": " & getCurrentExceptionMsg()
+    raise newException(CriticalTestFailed, "Critical test failed! Other tests can not be passed.")
 
 
 template check(ex1: untyped, ex2: untyped, ex: typedesc) =
