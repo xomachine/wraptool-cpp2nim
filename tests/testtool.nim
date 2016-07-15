@@ -83,3 +83,6 @@ when isMainModule:
         check(false)
       test "require mechanism":
         require(true)
+    suite "Multiple suites":
+      test "another test in next suite":
+        check(true)
