@@ -67,7 +67,6 @@ when defined(cpp):
   proc generate_type_declaration*(self: Class, fields: NimNode = newStmtList()): NimNode =
     ## Generates type declaration for current class
     ## Returned declaration must be placed into TypeSection node
-    ## Given state must include class field with current CppClass
     ## `fields` - class fields to place into declaration
     fields.expectKind(nnkStmtList)
     let class_fields = toSeq(fields.children())
